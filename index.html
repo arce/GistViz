@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Gist Viz</title>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js/styles/github.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/highlight.js/lib/common.min.js"></script>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; margin: 0; display: flex; height: 100vh; flex-direction: column; color: #24292e; }
+    
+    #topbar { background: #24292e; color: white; padding: 10px 15px; font-size: 14px; display: flex; gap: 15px; flex-shrink: 0; align-items: center; border-bottom: 1px solid #444; }
+    .logo-gist { color: #3498db; } 
+    .logo-viz { color: #2ecc71; }  
+    .logo-container { font-size: 18px; font-weight: bold; margin-right: 5px; }
+    
+    #topbar a { color: #adb5bd; text-decoration: none; font-size: 12px; }
+    #topbar a:hover { color: white; text-decoration: underline; }
+    
+    .main-container { display: flex; flex: 1; overflow: hidden; }
+    #sidebar { width: 220px; background: #f6f8fa; border-right: 1px solid #e1e4e8; overflow-y: auto; }
+    #sidebar ul { list-style: none; padding: 0; margin: 0; }
+    #sidebar li { padding: 8px 12px; cursor: pointer; border-bottom: 1px solid #e1e4e8; font-size: 12px; font-family: monospace; color: #0366d6; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    #sidebar li:hover { background: #ebf0f4; }
+    #sidebar li.active { background: #fff; border-left: 4px solid #3498db; color: #24292e; font-weight: bold; }
+    
+    #content { flex: 1; padding: 20px; overflow-y: auto; background: white; }
+    
+    .content-wrapper { max-width: 100%; margin: 0; }
+    
+    pre { background: #f6f8fa; padding: 12px; border-radius: 6px; border: 1px solid #dfe1e4; overflow: auto; margin: 0; }
+    img { max-width: 100%; height: auto; border: 1px solid #ddd; border-radius: 4px; }
+    .separator { color: #444; }
+    #file-count { color: #8b949e; font-size: 12px; }
+
+    .markdown-body h1, .markdown-body h2 { border-bottom: 1px solid #eaecef; padding-bottom: 0.3em; margin-top: 0; }
+    .markdown-body p { line-height: 1.5; }
+  </style>
+</head>
+<body>
+
+  <div id="topbar">
+    <div class="logo-container">
+      <span class="logo-gist">Gist</span><span class="logo-viz">Viz</span>
+    </div>
+    <span class="separator">|</span>
+    <span id="gist-id" style="font-family:monospace; color: #e1e4e8; font-size: 12px;"></span>
+    <span id="file-count"></span>
+    <div style="flex-grow: 1;"></div>
+    <a href="#" id="github-link" target="_blank">GitHub</a>
+  </div>
+  
+  <div class="main-container">
+    <div id="sidebar"><ul id="fileList"></ul></div>
+    <div id="content"><div class="content-wrapper">Loading...</div></div>
+  </div>
+
+  <script>
+    async function loadGist() {
+      const params = new URLSearchParams(window.location.search);
+      const gistId = params.get("id");
+
+      if (!gistId) {
+        document.getElementById("content").innerHTML = "<h2>Welcome</h2><p>Add <code>?id=YOUR_GIST_ID</code> to the URL to view files.</p>";
+        return;
+      }
+
+      document.getElementById("gist-id").innerText = gistId;
+      document.getElementById("github-link").href = `https://gist.github.com/${gistId}`;
+
+      try {
+        const response = await fetch(`https://api.github.com/gists/${gistId}`);
+        if (!response.ok) throw new Error("Gist not found.");
+        const gist = await response.json();
+
+        const fileListContainer = document.getElementById("fileList");
+        const files = Object.values(gist.files);
+
+        files.sort((a, b) => {
+          const aName = a.filename.toLowerCase();
+          const bName = b.filename.toLowerCase();
+          if (aName.startsWith("readme")) return -1;
+          if (bName.startsWith("readme")) return 1;
+          return aName.localeCompare(bName);
+        });
+
+        document.getElementById("file-count").innerText = `${files.length} file(s)`;
+        fileListContainer.innerHTML = "";
+
+        files.forEach((file, index) => {
+          const li = document.createElement("li");
+          li.textContent = file.filename;
+          
+          li.onclick = () => {
+            document.querySelectorAll('#sidebar li').forEach(l => l.classList.remove('active'));
+            li.classList.add('active');
+            renderFile(file);
+          };
+
+          fileListContainer.appendChild(li);
+
+          if (index === 0) {
+            li.classList.add('active');
+            renderFile(file);
+          }
+        });
+
+      } catch (error) {
+        document.getElementById("content").innerText = "Error: " + error.message;
+      }
+    }
+
+    function renderFile(file) {
+      const container = document.getElementById("content");
+      const ext = file.filename.split('.').pop().toLowerCase();
+      const imageExts = ['jpg', 'jpeg', 'png', 'gif', 'svg', 'webp'];
+
+      container.innerHTML = ""; 
+      const wrapper = document.createElement("div");
+      wrapper.className = "content-wrapper";
+
+      if (imageExts.includes(ext)) {
+        const img = document.createElement("img");
+        img.src = file.raw_url;
+        wrapper.appendChild(img);
+      } 
+      else if (file.language === "Markdown" || ext === 'md') {
+        const div = document.createElement("div");
+        div.className = "markdown-body";
+        div.innerHTML = marked.parse(file.content || "");
+        wrapper.appendChild(div);
+      } 
+      else {
+        const pre = document.createElement("pre");
+        const code = document.createElement("code");
+        code.textContent = file.content || "";
+        if (file.language) {
+          code.className = `language-${file.language.toLowerCase()}`;
+        } else if (ext === 'html') {
+          code.className = `language-xml`;
+        }
+        pre.appendChild(code);
+        wrapper.appendChild(pre);
+        if (window.hljs) hljs.highlightElement(code);
+      }
+      
+      container.appendChild(wrapper);
+    }
+
+    loadGist();
+  </script>
+</body>
+</html>
