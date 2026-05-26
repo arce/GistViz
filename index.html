@@ -110,42 +110,61 @@
       }
     }
 
-    function renderFile(file) {
-      const container = document.getElementById("content");
-      const ext = file.filename.split('.').pop().toLowerCase();
-      const imageExts = ['jpg', 'jpeg', 'png', 'gif', 'svg', 'webp'];
+	function renderFile(file) {
+	  const container = document.getElementById("content");
+	  const ext = file.filename.split('.').pop().toLowerCase();
+	  const imageExts = ['jpg', 'jpeg', 'png', 'gif', 'svg', 'webp'];
 
-      container.innerHTML = ""; 
-      const wrapper = document.createElement("div");
-      wrapper.className = "content-wrapper";
+	  container.innerHTML = ""; 
+	  const wrapper = document.createElement("div");
+	  wrapper.className = "content-wrapper";
 
-      if (imageExts.includes(ext)) {
-        const img = document.createElement("img");
-        img.src = file.raw_url;
-        wrapper.appendChild(img);
-      } 
-      else if (file.language === "Markdown" || ext === 'md') {
-        const div = document.createElement("div");
-        div.className = "markdown-body";
-        div.innerHTML = marked.parse(file.content || "");
-        wrapper.appendChild(div);
-      } 
-      else {
-        const pre = document.createElement("pre");
-        const code = document.createElement("code");
-        code.textContent = file.content || "";
-        if (file.language) {
-          code.className = `language-${file.language.toLowerCase()}`;
-        } else if (ext === 'html') {
-          code.className = `language-xml`;
-        }
-        pre.appendChild(code);
-        wrapper.appendChild(pre);
-        if (window.hljs) hljs.highlightElement(code);
-      }
-      
-      container.appendChild(wrapper);
-    }
+	  if (imageExts.includes(ext)) {
+	    const img = document.createElement("img");
+	    img.src = file.raw_url;
+	    wrapper.appendChild(img);
+	  } 
+	  else if (file.language === "Markdown" || ext === 'md') {
+	    const div = document.createElement("div");
+	    div.className = "markdown-body";
+	    div.innerHTML = marked.parse(file.content || "");
+	    wrapper.appendChild(div);
+	  } 
+	  else {
+	    const pre = document.createElement("pre");
+	    const code = document.createElement("code");
+	    code.textContent = file.content || "";
+    
+	    // Detectar lenguaje más precisamente
+	    let lang = file.language;
+	    if (!lang) {
+	      if (ext === 'js' || ext === 'javascript') lang = 'javascript';
+	      else if (ext === 'py') lang = 'python';
+	      else if (ext === 'c' || ext === 'h') lang = 'c';
+	      else if (ext === 'cpp' || ext === 'hpp') lang = 'cpp';
+	      else if (ext === 'html') lang = 'xml';
+	      else if (ext === 'css') lang = 'css';
+	      else if (ext === 'json') lang = 'json';
+	      else if (ext === 'sh') lang = 'bash';
+	    }
+    
+	    if (lang) {
+	      code.className = `language-${lang.toLowerCase()}`;
+	    }
+    
+	    pre.appendChild(code);
+	    wrapper.appendChild(pre);
+    
+	    // Esperar a que el elemento esté en el DOM y highlight.js esté disponible
+	    setTimeout(() => {
+	      if (typeof hljs !== 'undefined' && hljs.highlightElement) {
+	        hljs.highlightElement(code);
+	      }
+	    }, 50);
+	  }
+  
+	  container.appendChild(wrapper);
+	}
 
     loadGist();
   </script>
