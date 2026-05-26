@@ -77,6 +77,40 @@
       return parts.length > 1 ? parts.pop().toLowerCase() : '';
     }
 
+    // Función para detectar si el contenido es una imagen base64
+    function isBase64Image(content) {
+      if (!content || typeof content !== 'string') return false;
+      const trimmed = content.trim();
+      // Detecta data:image/png;base64, o data:image/jpeg;base64, etc.
+      if (/^data:image\/\w+;base64,/.test(trimmed)) return true;
+      // Detecta base64 puro que comienza con firma PNG, JPEG o GIF
+      const firstChars = trimmed.substring(0, 30);
+      if (/^iVBORw0KGgo/.test(firstChars)) return true;  // PNG
+      if (/^\/9j\/4AAQSkZ/.test(firstChars)) return true; // JPEG
+      if (/^R0lGODlh/.test(firstChars)) return true;      // GIF
+      return false;
+    }
+
+    // Convierte contenido base64 a una URL de imagen válida
+    function getBase64ImageUrl(content) {
+      const trimmed = content.trim();
+      // Si ya tiene el formato data:image, lo devuelve directamente
+      if (/^data:image\/\w+;base64,/.test(trimmed)) {
+        return trimmed;
+      }
+      // Si es base64 puro, agrega el prefijo correspondiente según la firma
+      if (/^iVBORw0KGgo/.test(trimmed)) {
+        return 'data:image/png;base64,' + trimmed;
+      }
+      if (/^\/9j\/4AAQSkZ/.test(trimmed)) {
+        return 'data:image/jpeg;base64,' + trimmed;
+      }
+      if (/^R0lGODlh/.test(trimmed)) {
+        return 'data:image/gif;base64,' + trimmed;
+      }
+      return null;
+    }
+
     async function loadGist() {
       const params = new URLSearchParams(window.location.search);
       const gistId = params.get("id");
@@ -150,9 +184,19 @@
       try {
         const content = await getFileContent(file);
 
+        // Verificar si es imagen por extensión
         if (imageExts.includes(ext)) {
           wrapper.innerHTML = `<img src="${file.raw_url}" alt="${file.filename}">`;
           return;
+        }
+
+        // NUEVO: Verificar si el contenido es una imagen base64
+        if (isBase64Image(content)) {
+          const imgUrl = getBase64ImageUrl(content);
+          if (imgUrl) {
+            wrapper.innerHTML = `<img src="${imgUrl}" alt="${file.filename}">`;
+            return;
+          }
         }
 
         if (file.language === "Markdown" || ext === 'md') {
