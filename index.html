@@ -7,8 +7,11 @@
   <!-- Marked para Markdown -->
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 
-  <!-- Estilos de Highlight.js -->
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js/styles/github.min.css">
+  <!-- Estilos de Highlight.js (tema GitHub) -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
+
+  <!-- Highlight.js compilado para navegador -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
 
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; margin: 0; display: flex; height: 100vh; flex-direction: column; color: #24292e; }
@@ -27,6 +30,8 @@
     .separator { color: #444; } #file-count { color: #8b949e; font-size: 12px; }
     .markdown-body h1, .markdown-body h2 { border-bottom: 1px solid #eaecef; padding-bottom: 0.3em; margin-top: 0; }
     .markdown-body p { line-height: 1.5; }
+    /* Ajustes para bloques de código generados por marked */
+    .markdown-body pre { background: #f6f8fa; padding: 12px; border-radius: 6px; border: 1px solid #dfe1e4; overflow: auto; }
   </style>
 </head>
 <body>
@@ -45,35 +50,11 @@
   </div>
 
   <script>
-    /**
-     * Asegura que highlight.js esté cargado y disponible como window.hljs.
-     * Si ya existe, resuelve inmediatamente. Si no, inserta el <script> y espera onload.
-     */
-    function ensureHljs() {
-      return new Promise((resolve, reject) => {
-        if (window.hljs) return resolve(window.hljs);
-
-        const src = "https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/highlight.min.js";
-        // Evitar múltiples inserciones si ya se está cargando
-        if (document.querySelector('script[data-hljs-loader]')) {
-          const existing = document.querySelector('script[data-hljs-loader]');
-          existing.addEventListener('load', () => {
-            if (window.hljs) resolve(window.hljs); else reject(new Error("hljs no disponible"));
-          });
-          existing.addEventListener('error', () => reject(new Error("Error cargando highlight.js")));
-          return;
-        }
-
-        const s = document.createElement('script');
-        s.src = src;
-        s.async = true;
-        s.setAttribute('data-hljs-loader', 'true');
-        s.onload = () => {
-          if (window.hljs) resolve(window.hljs); else reject(new Error("hljs no definido tras cargar"));
-        };
-        s.onerror = () => reject(new Error("Error cargando highlight.js"));
-        document.head.appendChild(s);
-      });
+    // Función auxiliar para detectar extensión segura
+    function getExt(filename) {
+      if (!filename) return '';
+      const parts = filename.split('.');
+      return parts.length > 1 ? parts.pop().toLowerCase() : '';
     }
 
     async function loadGist() {
@@ -94,11 +75,11 @@
         const gist = await response.json();
 
         const fileListContainer = document.getElementById("fileList");
-        const files = Object.values(gist.files);
+        const files = Object.values(gist.files || {});
 
         files.sort((a, b) => {
-          const aName = a.filename.toLowerCase();
-          const bName = b.filename.toLowerCase();
+          const aName = (a.filename || '').toLowerCase();
+          const bName = (b.filename || '').toLowerCase();
           if (aName.startsWith("readme")) return -1;
           if (bName.startsWith("readme")) return 1;
           return aName.localeCompare(bName);
@@ -109,7 +90,7 @@
 
         files.forEach((file, index) => {
           const li = document.createElement("li");
-          li.textContent = file.filename;
+          li.textContent = file.filename || "(untitled)";
           li.onclick = () => {
             document.querySelectorAll('#sidebar li').forEach(l => l.classList.remove('active'));
             li.classList.add('active');
@@ -127,13 +108,9 @@
       }
     }
 
-    /**
-     * Renderiza un archivo: imagen, Markdown o bloque de código con resaltado.
-     * Usa ensureHljs() para garantizar que hljs esté disponible antes de resaltar.
-     */
     function renderFile(file) {
       const container = document.getElementById("content");
-      const ext = (file.filename || "").split('.').pop().toLowerCase();
+      const ext = getExt(file.filename);
       const imageExts = ['jpg', 'jpeg', 'png', 'gif', 'svg', 'webp'];
 
       container.innerHTML = "";
@@ -151,13 +128,22 @@
       if (file.language === "Markdown" || ext === 'md') {
         const div = document.createElement("div");
         div.className = "markdown-body";
+        // marked.parse genera <pre><code class="language-..."> para bloques de código
         div.innerHTML = marked.parse(file.content || "");
         wrapper.appendChild(div);
         container.appendChild(wrapper);
+
+        // Resaltar cualquier bloque de código generado por marked
+        if (window.hljs && typeof hljs.highlightAll === 'function') {
+          hljs.highlightAll();
+        } else {
+          // Si por alguna razón hljs no está listo, esperar al load del window
+          window.addEventListener('load', () => { if (window.hljs) hljs.highlightAll(); });
+        }
         return;
       }
 
-      // Bloque de código
+      // Bloque de código plano
       const pre = document.createElement("pre");
       const code = document.createElement("code");
       code.textContent = file.content || "";
@@ -181,24 +167,25 @@
       wrapper.appendChild(pre);
       container.appendChild(wrapper);
 
-      // Intentar resaltar: si hljs no está aún, cargarlo dinámicamente
-      ensureHljs()
-        .then((hljs) => {
-          // highlightAll resalta todos los bloques; highlightElement resalta uno específico
-          if (typeof hljs.highlightElement === 'function') {
-            try { hljs.highlightElement(code); }
-            catch (e) { /* si falla, intentar highlightAll */ hljs.highlightAll(); }
-          } else if (typeof hljs.highlightAll === 'function') {
-            hljs.highlightAll();
+      // Resaltar el bloque específico si hljs está disponible
+      if (window.hljs && typeof hljs.highlightElement === 'function') {
+        try {
+          hljs.highlightElement(code);
+        } catch (e) {
+          // fallback a highlightAll si algo falla
+          if (typeof hljs.highlightAll === 'function') hljs.highlightAll();
+        }
+      } else {
+        // Si hljs no está definido (raro si cargaste el script), esperar al load
+        window.addEventListener('load', () => {
+          if (window.hljs && typeof hljs.highlightElement === 'function') {
+            try { hljs.highlightElement(code); } catch (e) { if (typeof hljs.highlightAll === 'function') hljs.highlightAll(); }
           }
-        })
-        .catch(err => {
-          // Si no se pudo cargar highlight.js, mostrar el código sin resaltado y log en consola
-          console.error("No se pudo cargar highlight.js:", err);
         });
+      }
     }
 
-    // Iniciar carga
+    // Iniciar
     loadGist();
   </script>
 </body>
