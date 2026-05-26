@@ -2,33 +2,61 @@
 <html lang="es">
 <head>
   <meta charset="utf-8" />
-  <title>Gist Vis</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Gist Vis - Responsive</title>
 
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
-
   <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
 
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; margin: 0; display: flex; height: 100vh; flex-direction: column; color: #24292e; }
-    #topbar { background: #24292e; color: white; padding: 10px 15px; font-size: 14px; display: flex; gap: 15px; flex-shrink: 0; align-items: center; border-bottom: 1px solid #444; }
+    
+    /* Topbar flexible */
+    #topbar { background: #24292e; color: white; padding: 10px 15px; font-size: 14px; display: flex; gap: 15px; flex-shrink: 0; align-items: center; border-bottom: 1px solid #444; flex-wrap: wrap; }
     .logo-gist { color: #3498db; } .logo-viz { color: #2ecc71; } .logo-container { font-size: 18px; font-weight: bold; margin-right: 5px; }
     #topbar a { color: #adb5bd; text-decoration: none; font-size: 12px; } #topbar a:hover { color: white; text-decoration: underline; }
-    .main-container { display: flex; flex: 1; overflow: hidden; }
-    #sidebar { width: 220px; background: #f6f8fa; border-right: 1px solid #e1e4e8; overflow-y: auto; }
+    
+    /* Contenedor principal adaptable */
+    .main-container { display: flex; flex: 1; overflow: hidden; flex-direction: row; }
+    
+    #sidebar { width: 220px; background: #f6f8fa; border-right: 1px solid #e1e4e8; overflow-y: auto; flex-shrink: 0; }
     #sidebar ul { list-style: none; padding: 0; margin: 0; }
     #sidebar li { padding: 8px 12px; cursor: pointer; border-bottom: 1px solid #e1e4e8; font-size: 12px; font-family: monospace; color: #0366d6; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     #sidebar li:hover { background: #ebf0f4; } #sidebar li.active { background: #fff; border-left: 4px solid #3498db; color: #24292e; font-weight: bold; }
+    
     #content { flex: 1; padding: 20px; overflow-y: auto; background: white; }
     .content-wrapper { max-width: 100%; margin: 0; }
+    
     pre { background: #f6f8fa; padding: 12px; border-radius: 6px; border: 1px solid #dfe1e4; overflow: auto; margin: 0; }
     img { max-width: 100%; height: auto; border: 1px solid #ddd; border-radius: 4px; }
     .separator { color: #444; } #file-count { color: #8b949e; font-size: 12px; }
+    
     .markdown-body h1, .markdown-body h2 { border-bottom: 1px solid #eaecef; padding-bottom: 0.3em; margin-top: 0; }
     .markdown-body p { line-height: 1.5; }
-    /* Ajustes para bloques de código generados por marked */
     .markdown-body pre { background: #f6f8fa; padding: 12px; border-radius: 6px; border: 1px solid #dfe1e4; overflow: auto; }
+
+    /* --- CAMBIOS PARA RESPONSIVE --- */
+    @media (max-width: 768px) {
+      .main-container { 
+        flex-direction: column; /* Apila el sidebar sobre el contenido */
+      }
+      
+      #sidebar { 
+        width: 100%; 
+        height: 150px; /* Limita la altura del menú en móvil */
+        border-right: none; 
+        border-bottom: 1px solid #e1e4e8; 
+      }
+
+      #topbar #gist-id { 
+        display: none; /* Oculta el ID largo para evitar desbordamiento */
+      }
+      
+      #content { 
+        padding: 15px; 
+      }
+    }
   </style>
 </head>
 <body>
@@ -91,6 +119,11 @@
             document.querySelectorAll('#sidebar li').forEach(l => l.classList.remove('active'));
             li.classList.add('active');
             renderFile(file);
+            
+            // Scroll suave hacia el contenido al elegir archivo en pantallas pequeñas
+            if (window.innerWidth <= 768) {
+                document.getElementById('content').scrollIntoView({ behavior: 'smooth' });
+            }
           };
           fileListContainer.appendChild(li);
           if (index === 0) {
@@ -104,57 +137,48 @@
       }
     }
 
-	async function getFileContent(file) {
-	  if (file.truncated) {
-	    const response = await fetch(file.raw_url);
-	    return await response.text();
-	  }
-	  return file.content || "";
-	}
+    async function getFileContent(file) {
+      if (file.truncated) {
+        const response = await fetch(file.raw_url);
+        return await response.text();
+      }
+      return file.content || "";
+    }
 
-	async function renderFile(file) {
-	  const container = document.getElementById("content");
-	  const wrapper = document.querySelector(".content-wrapper");
-	  const ext = getExt(file.filename);
-	  const imageExts = ['jpg', 'jpeg', 'png', 'gif', 'svg', 'webp'];
+    async function renderFile(file) {
+      const wrapper = document.querySelector(".content-wrapper");
+      const ext = getExt(file.filename);
+      const imageExts = ['jpg', 'jpeg', 'png', 'gif', 'svg', 'webp'];
 
-	  wrapper.innerHTML = "Cargando archivo..."; // Feedback visual
+      wrapper.innerHTML = "Cargando archivo...";
 
-	  try {
-	    const content = await getFileContent(file);
+      try {
+        const content = await getFileContent(file);
 
-	    if (imageExts.includes(ext)) {
-	      wrapper.innerHTML = `<img src="${file.raw_url}" alt="${file.filename}">`;
-	      return;
-	    }
+        if (imageExts.includes(ext)) {
+          wrapper.innerHTML = `<img src="${file.raw_url}" alt="${file.filename}">`;
+          return;
+        }
 
-	    if (file.language === "Markdown" || ext === 'md') {
-	      wrapper.innerHTML = `<div class="markdown-body">${marked.parse(content)}</div>`;
-	      wrapper.querySelectorAll('pre code').forEach(block => hljs.highlightElement(block));
-	      return;
-	    }
+        if (file.language === "Markdown" || ext === 'md') {
+          wrapper.innerHTML = `<div class="markdown-body">${marked.parse(content)}</div>`;
+          wrapper.querySelectorAll('pre code').forEach(block => hljs.highlightElement(block));
+          return;
+        }
 
-	    // Para código normal
-	    const pre = document.createElement("pre");
-	    const code = document.createElement("code");
-	    code.textContent = content;
-    
-	    // Mapeo de lenguaje más simple
-	    if (file.language) {
-	      code.className = `language-${file.language.toLowerCase()}`;
-	    }
-    
-	    pre.appendChild(code);
-	    wrapper.innerHTML = "";
-	    wrapper.appendChild(pre);
-	    hljs.highlightElement(code);
+        const pre = document.createElement("pre");
+        const code = document.createElement("code");
+        code.textContent = content;
+        if (file.language) { code.className = `language-${file.language.toLowerCase()}`; }
+        pre.appendChild(code);
+        wrapper.innerHTML = "";
+        wrapper.appendChild(pre);
+        hljs.highlightElement(code);
+      } catch (err) {
+        wrapper.innerHTML = `<p style="color:red">Error al cargar contenido: ${err.message}</p>`;
+      }
+    }
 
-	  } catch (err) {
-	    wrapper.innerHTML = `<p style="color:red">Error al cargar contenido: ${err.message}</p>`;
-	  }
-	}
-
-    // Iniciar
     loadGist();
   </script>
 </body>
