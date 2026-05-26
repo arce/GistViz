@@ -156,18 +156,7 @@
         }
 
         if (file.language === "Markdown" || ext === 'md') {
-		
-			const basePath = window.location.pathname;
-			let modifiedContent = content;
-
-			modifiedContent = modifiedContent.replace(
-               /\[([^\]]*)\]\(https?:\/\/gist\.github\.com\/([a-zA-Z0-9]+)(?:\/[^)\s]*)?\)/g,
-			  (match, text, gistId) => {
-			    return `[${text}](${basePath}?id=${gistId})`;
-			  }
-			);
-			
-          wrapper.innerHTML = `<div class="markdown-body">${marked.parse(modifiedContent)}</div>`;
+          wrapper.innerHTML = `<div class="markdown-body">${marked.parse(content)}</div>`;
           wrapper.querySelectorAll('pre code').forEach(block => hljs.highlightElement(block));
           return;
         }
