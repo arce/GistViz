@@ -161,7 +161,7 @@
 			let modifiedContent = content;
 
 			modifiedContent = modifiedContent.replace(
-			  /\[([^\]]*)\]\(https:\/\/gist\.github\.com\/([a-zA-Z0-9]+)(?:\/[^\)]*)?\)/g,
+               /\[([^\]]*)\]\(https?:\/\/gist\.github\.com\/([a-zA-Z0-9]+)(?:\/[^)\s]*)?\)/g,
 			  (match, text, gistId) => {
 			    return `[${text}](${basePath}?id=${gistId})`;
 			  }
