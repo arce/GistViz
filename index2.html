@@ -9,6 +9,21 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
 
+  <script>
+    // Caches the ~90MB Clang/LLVM WASM toolchain (browsercc) in Cache
+    // Storage via a service worker, so it only downloads once per browser -
+    // reloading the page, or visiting again later, reuses the cached copy
+    // instead of re-fetching it. No-ops on file:// or plain http hosting,
+    // since service workers require a secure context (https or localhost).
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('sw.js').catch((err) => {
+          console.warn('No se pudo registrar el service worker de cache del compilador:', err);
+        });
+      });
+    }
+  </script>
+
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; margin: 0; display: flex; height: 100vh; flex-direction: column; color: #24292e; background: #f6f8fa; }
     
@@ -18,6 +33,7 @@
     .compiler-status { font-size: 11px; color: #8b949e; margin-left: 10px; }
     .compiler-status.ready { color: #2ea44f; }
     .compiler-status.loading { color: #f0b400; }
+    .compiler-status.idle { color: #8b949e; }
     
     .main-container { display: flex; flex: 1; overflow: hidden; flex-direction: row; }
     
@@ -92,7 +108,7 @@
     <span class="separator">|</span>
     <span id="gist-id" style="font-family:monospace; color: #e1e4e8; font-size: 12px;"></span>
     <span id="file-count"></span>
-    <span id="compilerStatus" class="compiler-status loading">⏳ Compiler: Cargando...</span>
+    <span id="compilerStatus" class="compiler-status idle">💤 Compiler: en espera (se activa al abrir un .c/.cpp)</span>
     <div style="flex-grow: 1;"></div>
     <a href="#" id="github-link" target="_blank">GitHub</a>
   </div>
@@ -341,9 +357,6 @@
             renderFile(file);
           }
         });
-
-        // Initialize compiler in background
-        ensureCompiler().catch(console.error);
 
       } catch (error) {
         document.querySelector(".content-wrapper").innerText = "Error: " + error.message;
@@ -610,6 +623,12 @@
           const editor = createEditor(file, content);
           wrapper.innerHTML = '';
           wrapper.appendChild(editor);
+          // Lazily warm up the compiler only when a compilable file is
+          // actually opened, instead of downloading ~90MB on every page
+          // load regardless of whether the user ever compiles anything.
+          if (!compilerReady && !compilerInitializing) {
+            ensureCompiler().catch(console.error);
+          }
           return;
         }
 
