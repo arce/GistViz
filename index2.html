@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>GistVis - Editor & Compiler</title>
+  <title>GistVis - Editor & Compiler (browsercc)</title>
 
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
@@ -15,6 +15,9 @@
     #topbar { background: #24292e; color: white; padding: 10px 15px; font-size: 14px; display: flex; gap: 15px; flex-shrink: 0; align-items: center; border-bottom: 1px solid #444; flex-wrap: wrap; z-index: 10; }
     .logo-gist { color: #3498db; } .logo-viz { color: #2ecc71; } .logo-container { font-size: 18px; font-weight: bold; margin-right: 5px; }
     #topbar a { color: #adb5bd; text-decoration: none; font-size: 12px; } #topbar a:hover { color: white; text-decoration: underline; }
+    .compiler-status { font-size: 11px; color: #8b949e; margin-left: 10px; }
+    .compiler-status.ready { color: #2ea44f; }
+    .compiler-status.loading { color: #f0b400; }
     
     .main-container { display: flex; flex: 1; overflow: hidden; flex-direction: row; }
     
@@ -41,13 +44,17 @@
     .editor-toolbar button.compile:hover { background: #0256b3; border-color: #0256b3; }
     .editor-toolbar button.compile:disabled { opacity: 0.5; cursor: not-allowed; }
     .editor-toolbar .filename-display { font-family: monospace; font-size: 13px; color: #586069; }
+    
     .editor-main { display: flex; flex: 1; overflow: hidden; }
     .editor-textarea { flex: 1; padding: 16px; font-family: 'Consolas', 'Monaco', 'Courier New', monospace; font-size: 14px; border: none; outline: none; resize: none; background: #fafbfc; line-height: 1.6; tab-size: 2; overflow: auto; }
     .editor-textarea:focus { background: white; }
+    
     .editor-output { flex: 1; padding: 16px; background: #1e1e1e; color: #d4d4d4; font-family: 'Consolas', 'Monaco', 'Courier New', monospace; font-size: 13px; overflow: auto; border-left: 1px solid #ddd; white-space: pre-wrap; word-wrap: break-word; min-height: 300px; }
     .editor-output .error { color: #f48771; }
     .editor-output .success { color: #6a9955; }
     .editor-output .info { color: #569cd6; }
+    .editor-output .warn { color: #d4a72c; }
+    
     .editor-status { padding: 6px 12px; background: #f6f8fa; border-top: 1px solid #ddd; font-size: 12px; color: #586069; display: flex; justify-content: space-between; }
     .editor-status .modified { color: #d73a49; font-weight: bold; }
     .editor-status .saved { color: #28a745; font-weight: bold; }
@@ -61,8 +68,10 @@
     .markdown-body p { line-height: 1.5; }
 
     /* Compiler loading overlay */
-    .compiler-loading { display: flex; align-items: center; justify-content: center; padding: 20px; background: #f8f9fa; border-radius: 8px; margin: 10px 0; }
-    .compiler-loading .spinner { border: 3px solid #f3f3f3; border-top: 3px solid #0366d6; border-radius: 50%; width: 30px; height: 30px; animation: spin 1s linear infinite; margin-right: 15px; }
+    .compiler-loading { display: flex; align-items: center; justify-content: center; padding: 20px; background: #f8f9fa; border-radius: 8px; margin: 10px 0; flex-direction: column; }
+    .compiler-loading .spinner { border: 3px solid #f3f3f3; border-top: 3px solid #0366d6; border-radius: 50%; width: 30px; height: 30px; animation: spin 1s linear infinite; margin-bottom: 15px; }
+    .compiler-loading .progress { width: 300px; max-width: 80%; height: 4px; background: #ddd; border-radius: 2px; overflow: hidden; }
+    .compiler-loading .progress-bar { height: 100%; background: #0366d6; width: 0%; transition: width 0.3s; }
     @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
 
     @media (max-width: 768px) {
@@ -83,6 +92,7 @@
     <span class="separator">|</span>
     <span id="gist-id" style="font-family:monospace; color: #e1e4e8; font-size: 12px;"></span>
     <span id="file-count"></span>
+    <span id="compilerStatus" class="compiler-status loading">⏳ Compiler: Cargando...</span>
     <div style="flex-grow: 1;"></div>
     <a href="#" id="github-link" target="_blank">GitHub</a>
   </div>
@@ -92,158 +102,117 @@
     <div id="content"><div class="content-wrapper">Loading...</div></div>
   </div>
 
-  <script>
+  <script type="importmap">
+    {
+      "imports": {
+        "browsercc": "https://cdn.jsdelivr.net/npm/browsercc@0.1.3/dist/index.js"
+      }
+    }
+  </script>
+
+  <script type="module">
     // ============================================
-    // EMSCRIPTEN COMPILER INTEGRATION
+    // BROWSERCC COMPILER INTEGRATION
     // ============================================
-    let Module = null;
+    import { compile, init as initCompiler } from 'browsercc';
+
     let compilerReady = false;
-    let compilerLoading = false;
+    let compilerInitializing = false;
 
-    // Initialize Emscripten compiler
-    function initCompiler() {
-      return new Promise((resolve, reject) => {
-        if (compilerReady) {
-          resolve();
-          return;
-        }
-
-        if (compilerLoading) {
-          // Wait for loading to complete
-          const checkReady = setInterval(() => {
+    // Initialize browsercc compiler
+    async function ensureCompiler() {
+      if (compilerReady) return true;
+      if (compilerInitializing) {
+        // Wait for initialization to complete
+        return new Promise((resolve) => {
+          const check = setInterval(() => {
             if (compilerReady) {
-              clearInterval(checkReady);
-              resolve();
+              clearInterval(check);
+              resolve(true);
             }
           }, 100);
-          return;
-        }
-
-        compilerLoading = true;
-        
-        // Show loading indicator
-        const wrapper = document.querySelector(".content-wrapper");
-        if (wrapper) {
-          wrapper.innerHTML = `
-            <div class="compiler-loading">
-              <div class="spinner"></div>
-              <span>Cargando compilador C/C++ (Emscripten)...</span>
-            </div>
-          `;
-        }
-
-        // Load Emscripten compiler
-        const script = document.createElement('script');
-        script.src = 'https://cdn.jsdelivr.net/npm/emscripten-compiler@0.3.0/dist/compiler.min.js';
-        script.onload = () => {
-          // Initialize the compiler
-          if (typeof EmscriptenCompiler !== 'undefined') {
-            Module = EmscriptenCompiler({
-              onRuntimeInitialized: () => {
-                compilerReady = true;
-                compilerLoading = false;
-                resolve();
-              }
-            });
-          } else {
-            reject(new Error('EmscriptenCompiler not found'));
-          }
-        };
-        script.onerror = () => {
-          compilerLoading = false;
-          reject(new Error('Failed to load Emscripten compiler'));
-        };
-        document.head.appendChild(script);
-      });
-    }
-
-    // Compile C/C++ code using Emscripten
-    async function compileCode(code, filename) {
-      if (!compilerReady) {
-        await initCompiler();
+        });
       }
 
-      return new Promise((resolve, reject) => {
-        try {
-          const ext = getExt(filename);
-          const isCpp = ext === 'cpp' || ext === 'cc' || ext === 'cxx';
-          const compiler = isCpp ? 'em++' : 'emcc';
-          
-          // Create a virtual file system
-          Module.FS.writeFile('/tmp/program.cpp', code);
-          
-          // Build command
-          const args = [
-            '/tmp/program.cpp',
-            '-o', '/tmp/program.js',
-            '-s', 'EXPORTED_RUNTIME_METHODS=["ccall","cwrap"]',
-            '-s', 'ALLOW_MEMORY_GROWTH=1'
-          ];
-          
-          if (!isCpp) {
-            args.push('-std=c11');
+      compilerInitializing = true;
+      const statusEl = document.getElementById('compilerStatus');
+      
+      try {
+        statusEl.textContent = '⏳ Compiler: Descargando toolchain...';
+        statusEl.className = 'compiler-status loading';
+        
+        // Show download progress
+        const wrapper = document.querySelector(".content-wrapper");
+        if (wrapper && wrapper.querySelector('.compiler-loading')) {
+          const progressBar = wrapper.querySelector('.progress-bar');
+          if (progressBar) {
+            // Update progress during download
+            let progress = 0;
+            const interval = setInterval(() => {
+              progress += Math.random() * 5;
+              if (progress > 90) progress = 90;
+              progressBar.style.width = progress + '%';
+            }, 200);
+            
+            await initCompiler();
+            clearInterval(interval);
+            progressBar.style.width = '100%';
           } else {
-            args.push('-std=c++17');
+            await initCompiler();
           }
-
-          // Run compiler
-          const output = Module.callMain([compiler, ...args]);
-          
-          // Check if compilation succeeded
-          if (Module.FS.analyzePath('/tmp/program.js').exists) {
-            // Execute the compiled program
-            const jsCode = Module.FS.readFile('/tmp/program.js', { encoding: 'utf8' });
-            // Execute in a sandbox
-            const result = executeCompiledProgram(jsCode);
-            resolve(result);
-          } else {
-            // Get error output
-            const error = Module.FS.readFile('/tmp/program.cpp', { encoding: 'utf8' });
-            reject(new Error('Compilation failed'));
-          }
-        } catch (error) {
-          reject(error);
+        } else {
+          await initCompiler();
         }
-      });
+        
+        compilerReady = true;
+        compilerInitializing = false;
+        statusEl.textContent = '✅ Compiler: Listo';
+        statusEl.className = 'compiler-status ready';
+        return true;
+      } catch (error) {
+        console.error('Compiler initialization error:', error);
+        compilerInitializing = false;
+        statusEl.textContent = '❌ Compiler: Error';
+        statusEl.className = 'compiler-status';
+        throw error;
+      }
     }
 
-    // Execute compiled JavaScript program
-    function executeCompiledProgram(jsCode) {
-      return new Promise((resolve) => {
-        let output = '';
-        let errorOutput = '';
-        
-        // Create a sandbox environment
-        const sandbox = {
-          Module: {
-            print: (text) => { output += text + '\n'; },
-            printErr: (text) => { errorOutput += text + '\n'; },
-            onRuntimeInitialized: () => {}
-          },
-          console: {
-            log: (...args) => { output += args.join(' ') + '\n'; },
-            error: (...args) => { errorOutput += args.join(' ') + '\n'; }
-          }
+    // Compile C/C++ code using browsercc
+    async function compileCode(code, filename) {
+      if (!compilerReady) {
+        await ensureCompiler();
+      }
+
+      const ext = getExt(filename);
+      const isCpp = ext === 'cpp' || ext === 'cc' || ext === 'cxx';
+      
+      try {
+        // Prepare compiler options
+        const options = {
+          stdin: '',  // No input by default
+          args: [
+            filename,
+            '-std=' + (isCpp ? 'c++17' : 'c11'),
+            '-O2'
+          ]
         };
 
-        try {
-          // Execute the compiled code
-          const func = new Function('Module', 'console', jsCode);
-          func(sandbox.Module, sandbox.console);
-          
-          // Run the program (main function)
-          if (sandbox.Module._main) {
-            sandbox.Module._main(0, []);
-          }
-        } catch (e) {
-          errorOutput += e.message + '\n';
-        }
-
-        resolve({
-          output: output.trim(),
-          error: errorOutput.trim()
-        });
-      });
+        // Compile the code
+        const result = await compile(code, options);
+        
+        return {
+          output: result.stdout || '',
+          error: result.stderr || '',
+          success: result.success
+        };
+      } catch (error) {
+        return {
+          output: '',
+          error: error.message || 'Compilation failed',
+          success: false
+        };
+      }
     }
 
     // ============================================
@@ -332,6 +301,9 @@
           }
         });
 
+        // Initialize compiler in background
+        ensureCompiler().catch(console.error);
+
       } catch (error) {
         document.querySelector(".content-wrapper").innerText = "Error: " + error.message;
       }
@@ -394,7 +366,7 @@
       status.innerHTML = `
         <span>${lang || 'text'}</span>
         <span id="statusText" class="saved">✓ Saved</span>
-        <span id="lineCount">Lineas: ${content.split('\n').length}</span>
+        <span id="lineCount">Lines: ${content.split('\n').length}</span>
       `;
       container.appendChild(status);
       
@@ -418,7 +390,7 @@
       
       function updateLineCount() {
         const lines = textarea.value.split('\n').length;
-        status.querySelector('#lineCount').textContent = `Lineas: ${lines}`;
+        status.querySelector('#lineCount').textContent = `Lines: ${lines}`;
       }
       
       // Save (download)
@@ -458,12 +430,12 @@
       copyBtn.addEventListener('click', async () => {
         try {
           await navigator.clipboard.writeText(textarea.value);
-          copyBtn.textContent = '✅ Copiado!';
+          copyBtn.textContent = '✅ Copied!';
           setTimeout(() => copyBtn.textContent = '📋 Copy', 2000);
         } catch (err) {
           textarea.select();
           document.execCommand('copy');
-          copyBtn.textContent = '✅ Copiado!';
+          copyBtn.textContent = '✅ Copied!';
           setTimeout(() => copyBtn.textContent = '📋 Copy', 2000);
         }
       });
@@ -497,8 +469,8 @@
           compileBtn.textContent = '⏳ Compiling...';
           
           try {
-            // Initialize compiler if needed
-            await initCompiler();
+            // Ensure compiler is ready
+            await ensureCompiler();
             
             // Compile and run
             const result = await compileCode(code, file.filename);
@@ -510,12 +482,12 @@
             if (result.output) {
               output += '✅ Program Output:\n' + result.output;
             }
-            if (!result.output && !result.error) {
+            if (!result.output && !result.error && result.success) {
               output = '✅ Compilation successful! No output.';
             }
             
-            outputPanel.textContent = output;
-            outputPanel.className = 'editor-output ' + (result.error ? 'error' : 'success');
+            outputPanel.textContent = output || '✅ Compilation successful!';
+            outputPanel.className = 'editor-output ' + (result.error || !result.success ? 'error' : 'success');
           } catch (error) {
             outputPanel.textContent = '❌ Error during compilation: ' + error.message;
             outputPanel.className = 'editor-output error';
@@ -597,8 +569,6 @@
           const editor = createEditor(file, content);
           wrapper.innerHTML = '';
           wrapper.appendChild(editor);
-          // Initialize compiler in background
-          initCompiler().catch(console.error);
           return;
         }
 
