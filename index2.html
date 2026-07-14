@@ -431,7 +431,10 @@
       const copyBtn = toolbar.querySelector('#copyBtn');
       const resetBtn = toolbar.querySelector('#resetBtn');
       const compileBtn = toolbar.querySelector('#compileBtn');
-      const outputPanel = document.getElementById('outputPanel');
+      // Use the element reference directly - document.getElementById would
+      // return null here since this editor isn't attached to the DOM yet
+      // (renderFile() appends it after createEditor() returns).
+      const outputPanel = outputDiv;
       
       let hasChanges = false;
       
