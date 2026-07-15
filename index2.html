@@ -190,13 +190,6 @@ function explainCompilerError(text) {
     return text;
 }
 
-// Builds the virtual working directory a compiled program sees: every
-// other file in the same gist, so a plain fopen("data.txt", "r") just
-// works with no code changes. Reuses fileStore's in-memory (possibly
-// edited) content when a sibling file is already open in another tab, and
-// caches freshly-fetched siblings into fileStore too. Returns both the
-// WASI-ready File map and a name->text snapshot used afterwards to detect
-// which files the program created or modified.
 async function buildInputFiles(currentFilename) {
     const wasiFiles = new Map;
     const snapshot = new Map;
@@ -205,13 +198,38 @@ async function buildInputFiles(currentFilename) {
         let state = fileStore.get(f.filename);
         if (!state) {
             const original = await getFileContent(f);
-            state = { original: original, current: original };
+            state = {
+                original: original,
+                current: original
+            };
             fileStore.set(f.filename, state);
         }
         snapshot.set(f.filename, state.current);
-        wasiFiles.set(f.filename, new File(new TextEncoder().encode(state.current)));
+        wasiFiles.set(f.filename, new File((new TextEncoder).encode(state.current)));
     }
-    return { wasiFiles: wasiFiles, snapshot: snapshot };
+    return {
+        wasiFiles: wasiFiles,
+        snapshot: snapshot
+    };
+}
+
+async function buildHeaderFiles(currentFilename, headerExt) {
+    const extraFiles = {};
+    for (const f of gistFiles) {
+        if (f.filename === currentFilename) continue;
+        if (getExt(f.filename) !== headerExt) continue;
+        let state = fileStore.get(f.filename);
+        if (!state) {
+            const original = await getFileContent(f);
+            state = {
+                original: original,
+                current: original
+            };
+            fileStore.set(f.filename, state);
+        }
+        extraFiles[f.filename] = state.current;
+    }
+    return extraFiles;
 }
 
 async function compileCode(code, filename) {
@@ -223,10 +241,13 @@ async function compileCode(code, filename) {
     try {
         const flags = [ "-x", isCpp ? "c++" : "c", "-O2" ];
         if (isCpp) flags.push("-std=c++17", "-fno-exceptions");
+        const headerExt = isCpp ? "hpp" : "h";
+        const extraFiles = await buildHeaderFiles(filename, headerExt);
         const {compileOutput: compileOutput, module: module} = await compile({
             source: code,
             fileName: filename,
-            flags: flags
+            flags: flags,
+            extraFiles: extraFiles
         });
         if (!module) {
             return {
@@ -238,7 +259,7 @@ async function compileCode(code, filename) {
         }
         let stdout = "";
         let stderr = "";
-        const { wasiFiles: wasiFiles, snapshot: snapshot } = await buildInputFiles(filename);
+        const {wasiFiles: wasiFiles, snapshot: snapshot} = await buildInputFiles(filename);
         const workDir = new PreopenDirectory(".", wasiFiles);
         const fds = [ new OpenFile(new File([])), new ConsoleStdout(data => {
             stdout += (new TextDecoder).decode(data);
@@ -258,15 +279,15 @@ async function compileCode(code, filename) {
         }
         let error = compileOutput && compileOutput.trim() ? compileOutput.trim() : "";
         if (stderr) error += (error ? "\n" : "") + stderr;
-        // Any file in the virtual directory that's new or whose content
-        // changed was created/written by the program itself. Purely
-        // in-memory - never touches the real gist.
         const files = [];
         for (const [name, inode] of workDir.dir.contents) {
             if (!(inode instanceof File)) continue;
-            const text = new TextDecoder().decode(inode.data);
+            const text = (new TextDecoder).decode(inode.data);
             if (!snapshot.has(name) || snapshot.get(name) !== text) {
-                files.push({ name: name, content: text });
+                files.push({
+                    name: name,
+                    content: text
+                });
             }
         }
         return {
@@ -332,17 +353,11 @@ let currentObjectUrl = null;
 
 const fileStore = new Map;
 
-// All files of the currently loaded gist (filename + metadata from the
-// GitHub API), populated by loadGist(). Used to expose sibling files as a
-// virtual working directory to a compiled program - see buildInputFiles().
 let gistFiles = [];
 
-// Files created by a compiled program during this session (name -> content).
-// Rendered in the sidebar under "Generated" so they can be opened like any
-// other gist file. Never sent to GitHub.
-const generatedFiles = new Map();
+const generatedFiles = new Map;
 
-const CODE_EXTS = [ "cpp", "php", "py", "js", "java", "c", "h", "rb", "go", "rs", "ts", "jsx", "tsx", "vue", "css", "scss", "less", "json", "xml", "yaml", "yml", "sql", "sh", "bash" ];
+const CODE_EXTS = [ "cpp", "hpp", "php", "py", "js", "java", "c", "h", "rb", "go", "rs", "ts", "jsx", "tsx", "vue", "css", "scss", "less", "json", "xml", "yaml", "yml", "sql", "sh", "bash" ];
 
 const COMPILE_EXTS = [ "c", "cpp", "cc", "cxx" ];
 
@@ -363,6 +378,7 @@ function isCompilable(ext) {
 function getLanguageFromExt(ext) {
     const map = {
         cpp: "cpp",
+        hpp: "cpp",
         c: "c",
         h: "c",
         php: "php",
@@ -448,7 +464,7 @@ function renderGeneratedSidebar() {
         return;
     }
     section.style.display = "";
-    for (const [ name, content ] of generatedFiles) {
+    for (const [name, content] of generatedFiles) {
         const li = document.createElement("li");
         li.textContent = name;
         li.onclick = () => {
