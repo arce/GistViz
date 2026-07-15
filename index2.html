@@ -10,42 +10,28 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
 
   <script>
-    // Caches the ~90MB Clang/LLVM WASM toolchain (browsercc) in Cache
-    // Storage via a service worker, so it only downloads once per browser -
-    // reloading the page, or visiting again later, reuses the cached copy
-    // instead of re-fetching it. No-ops on file:// or plain http hosting,
-    // since service workers require a secure context (https or localhost).
-    if ('serviceWorker' in navigator) {
-      window.addEventListener('load', () => {
-        navigator.serviceWorker.register('sw.js').catch((err) => {
-          console.warn('Could not register the compiler cache service worker:', err);
+if ("serviceWorker" in navigator) {
+    window.addEventListener("load", () => {
+        navigator.serviceWorker.register("sw.js").catch(err => {
+            console.warn("Could not register the compiler cache service worker:", err);
         });
-      });
-    }
-
-    // Heuristic-only Safe Exam Browser check: SEB's desktop apps append a
-    // "SEB" / "SafeExamBrowser" token to the User-Agent string. This is
-    // NOT a security control - a student can override their User-Agent
-    // from any browser's devtools in a few seconds, so this only catches
-    // the case where someone opens the page in a regular browser by
-    // mistake and shows a visible reminder. Real enforcement (verifying
-    // SEB's per-request Config-Key/Browser-Exam-Key hash headers) can only
-    // happen on a server, which this static page doesn't have - that
-    // check belongs in the exam platform/LMS that hands out the link.
-    document.addEventListener('DOMContentLoaded', () => {
-      const ua = navigator.userAgent || '';
-      const looksLikeSEB = /SEB[\/\s]|SafeExamBrowser/i.test(ua);
-      if (!looksLikeSEB) {
-        const banner = document.getElementById('sebWarning');
-        if (banner) banner.classList.add('visible');
-        console.warn('Safe Exam Browser not detected in User-Agent (spoofable, informational only):', ua);
-      }
     });
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+    const ua = navigator.userAgent || "";
+    const looksLikeSEB = /SEB[\/\s]|SafeExamBrowser/i.test(ua);
+    if (!looksLikeSEB) {
+        const banner = document.getElementById("sebWarning");
+        if (banner) banner.classList.add("visible");
+        console.warn("Safe Exam Browser not detected in User-Agent (spoofable, informational only):", ua);
+    }
+});
   </script>
 
   <style>
+
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; margin: 0; display: flex; height: 100vh; flex-direction: column; color: #24292e; background: #f6f8fa; }
-    
     #topbar { background: #24292e; color: white; padding: 10px 15px; font-size: 14px; display: flex; gap: 15px; flex-shrink: 0; align-items: center; border-bottom: 1px solid #444; flex-wrap: wrap; z-index: 10; }
     .logo-gist { color: #3498db; } .logo-viz { color: #2ecc71; } .logo-container { font-size: 18px; font-weight: bold; margin-right: 5px; }
     #topbar a { color: #adb5bd; text-decoration: none; font-size: 12px; } #topbar a:hover { color: white; text-decoration: underline; }
@@ -58,20 +44,14 @@
     .compiler-status.loading { color: #f0b400; }
     .compiler-status.idle { color: #8b949e; }
     .compiler-status.error { color: #d73a49; }
-    
     .main-container { display: flex; flex: 1; overflow: hidden; flex-direction: row; }
-    
     #sidebar { width: 220px; background: #f6f8fa; border-right: 1px solid #e1e4e8; overflow-y: auto; flex-shrink: 0; }
     #sidebar ul { list-style: none; padding: 0; margin: 0; }
     #sidebar li { padding: 8px 12px; cursor: pointer; border-bottom: 1px solid #e1e4e8; font-size: 12px; font-family: monospace; color: #0366d6; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     #sidebar li:hover { background: #ebf0f4; } #sidebar li.active { background: #fff; border-left: 4px solid #3498db; color: #24292e; font-weight: bold; }
-    
     #content { flex: 1; padding: 20px; overflow: hidden; background: white; display: flex; flex-direction: column; }
     .content-wrapper { flex: 1; width: 100%; margin: 0; display: flex; flex-direction: column; overflow: hidden; }
-    
     .adaptive-iframe { width: 100%; flex: 1; min-height: 500px; border: 1px solid #ddd; border-radius: 8px; background: #fff; }
-    
-    /* Editor styles */
     .editor-container { display: flex; flex-direction: column; height: 100%; min-height: 500px; border: 1px solid #ddd; border-radius: 8px; overflow: hidden; background: #fafbfc; }
     .editor-toolbar { background: #f6f8fa; padding: 8px 12px; border-bottom: 1px solid #ddd; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
     .editor-toolbar button { padding: 6px 14px; border: 1px solid #ddd; border-radius: 4px; background: white; cursor: pointer; font-size: 13px; transition: all 0.2s; }
@@ -85,40 +65,32 @@
     .editor-toolbar button.send:hover { background: #5a32a3; border-color: #5a32a3; }
     .editor-toolbar button.send:disabled { opacity: 0.5; cursor: not-allowed; }
     .editor-toolbar .filename-display { font-family: monospace; font-size: 13px; color: #586069; }
-    
     .editor-main { display: flex; flex: 1; overflow: hidden; }
     .editor-textarea { flex: 3; padding: 16px; font-family: 'Consolas', 'Monaco', 'Courier New', monospace; font-size: 14px; border: none; outline: none; resize: none; background: #fafbfc; line-height: 1.6; tab-size: 2; overflow: auto; }
     .editor-textarea:focus { background: white; }
-    
     .editor-output { flex: 2; padding: 16px; background: #1e1e1e; color: #d4d4d4; font-family: 'Consolas', 'Monaco', 'Courier New', monospace; font-size: 13px; overflow: auto; border-left: 1px solid #ddd; white-space: pre-wrap; word-wrap: break-word; min-height: 300px; }
     .editor-output .error { color: #f48771; }
     .editor-output .success { color: #6a9955; }
     .editor-output .info { color: #569cd6; }
     .editor-output .warn { color: #d4a72c; }
-    
+    .files-panel { display: none; flex-direction: column; border-left: 1px solid #ddd; overflow: hidden; background: #fff; }
+    .files-panel.visible { display: flex; flex: 2; }
+    .files-panel .files-list { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px; border-bottom: 1px solid #ddd; background: #f6f8fa; flex-shrink: 0; }
+    .files-panel .files-list button { padding: 4px 10px; border: 1px solid #ddd; border-radius: 12px; background: white; cursor: pointer; font-size: 12px; font-family: monospace; }
+    .files-panel .files-list button.active { background: #6f42c1; color: white; border-color: #6f42c1; }
+    .files-panel .files-viewer { flex: 1; padding: 16px; overflow: auto; font-family: 'Consolas', 'Monaco', 'Courier New', monospace; font-size: 13px; white-space: pre-wrap; word-wrap: break-word; background: #1e1e1e; color: #d4d4d4; }
     .editor-status { padding: 6px 12px; background: #f6f8fa; border-top: 1px solid #ddd; font-size: 12px; color: #586069; display: flex; justify-content: space-between; }
     .editor-status .modified { color: #d73a49; font-weight: bold; }
     .editor-status .saved { color: #28a745; font-weight: bold; }
     .editor-status .info { color: #0366d6; }
-    
     pre { background: #f6f8fa; padding: 12px; border-radius: 6px; border: 1px solid #dfe1e4; overflow: auto; margin: 0; }
     img { max-width: 100%; height: auto; border: 1px solid #ddd; border-radius: 4px; display: block; margin: 10px 0; background: #fff; }
     .separator { color: #444; } #file-count { color: #8b949e; font-size: 12px; }
-    
     .markdown-body { flex: 1; min-height: 0; overflow-y: auto; }
     .markdown-body h1, .markdown-body h2 { border-bottom: 1px solid #eaecef; padding-bottom: 0.3em; margin-top: 0; }
     .markdown-body p { line-height: 1.5; }
-
-    /* Compiler loading overlay */
-    .compiler-loading { display: flex; align-items: center; justify-content: center; padding: 20px; background: #f8f9fa; border-radius: 8px; margin: 10px 0; flex-direction: column; }
-    .compiler-loading .spinner { border: 3px solid #f3f3f3; border-top: 3px solid #0366d6; border-radius: 50%; width: 30px; height: 30px; animation: spin 1s linear infinite; margin-bottom: 15px; }
-    .compiler-loading .progress { width: 300px; max-width: 80%; height: 4px; background: #ddd; border-radius: 2px; overflow: hidden; }
-    .compiler-loading .progress-bar { height: 100%; background: #0366d6; width: 0%; transition: width 0.3s; }
-    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-
     #sebWarning { display: none; background: #d73a49; color: white; padding: 8px 15px; font-size: 13px; text-align: center; flex-shrink: 0; }
     #sebWarning.visible { display: block; }
-
     @media (max-width: 768px) {
       .main-container { flex-direction: column; }
       #sidebar { width: 100%; height: 150px; border-right: none; border-bottom: 1px solid #e1e4e8; }
@@ -128,7 +100,9 @@
       .editor-container { min-height: 70vh; }
       .editor-main { flex-direction: column; }
       .editor-output { min-height: 200px; border-left: none; border-top: 1px solid #ddd; }
+      .files-panel.visible { min-height: 200px; border-left: none; border-top: 1px solid #ddd; }
     }
+
   </style>
 </head>
 <body>
@@ -159,596 +133,545 @@
   </script>
 
   <script type="module">
-    // ============================================
-    // BROWSERCC COMPILER INTEGRATION
-    // ============================================
-    // NOTE: browsercc@0.1.3 does not exist (latest published version is 0.1.1),
-    // and the package has no "init" export - only "compile". The old code was
-    // importing a non-existent module + a non-existent named export, which makes
-    // the browser fail to link this <script type="module"> block at all, so
-    // none of its code (including the gist/file loading) ever ran. Fixed to use
-    // the real API: compile({ source, fileName, flags }) => { compileOutput, module }.
-    // Running the compiled WebAssembly module (to capture stdout/stderr) requires
-    // a WASI runtime, which browsercc doesn't provide - using @bjorn3/browser_wasi_shim
-    // as recommended in the browsercc docs.
-    import { compile } from 'browsercc';
-    import { WASI, File, OpenFile, ConsoleStdout } from '@bjorn3/browser_wasi_shim';
+import { compile } from "browsercc";
 
-    let compilerReady = false;
-    let compilerInitializing = false;
+import { WASI, File, OpenFile, ConsoleStdout, PreopenDirectory } from "@bjorn3/browser_wasi_shim";
 
-    // Warm up the browsercc compiler. browsercc has no explicit "init" step -
-    // it lazily downloads the clang/lld wasm binaries and sysroot (~90MB total)
-    // on the first compile() call - so we trigger that here with a throwaway
-    // compile instead of waiting for the user's first real click.
-    async function ensureCompiler() {
-      if (compilerReady) return true;
-      if (compilerInitializing) {
-        // Wait for the in-flight initialization to complete
+let compilerReady = false;
+
+let compilerInitializing = false;
+
+async function ensureCompiler() {
+    if (compilerReady) return true;
+    if (compilerInitializing) {
         return new Promise((resolve, reject) => {
-          const check = setInterval(() => {
-            if (compilerReady) {
-              clearInterval(check);
-              resolve(true);
-            } else if (!compilerInitializing) {
-              clearInterval(check);
-              reject(new Error('Compiler initialization failed'));
-            }
-          }, 100);
+            const check = setInterval(() => {
+                if (compilerReady) {
+                    clearInterval(check);
+                    resolve(true);
+                } else if (!compilerInitializing) {
+                    clearInterval(check);
+                    reject(new Error("Compiler initialization failed"));
+                }
+            }, 100);
         });
-      }
-
-      compilerInitializing = true;
-      const statusEl = document.getElementById('compilerStatus');
-
-      try {
-        statusEl.textContent = 'Compiler: downloading toolchain (~90MB, may take a while)...';
-        statusEl.className = 'compiler-status loading';
-
-        // Show download progress (indeterminate - browsercc exposes no progress API)
-        const wrapper = document.querySelector(".content-wrapper");
-        let interval = null;
-        const progressBar = wrapper && wrapper.querySelector('.progress-bar');
-        if (progressBar) {
-          let progress = 0;
-          interval = setInterval(() => {
-            progress += Math.random() * 5;
-            if (progress > 90) progress = 90;
-            progressBar.style.width = progress + '%';
-          }, 200);
-        }
-
-        try {
-          // No -std= here either - see compileCode() for why passing a
-          // C-only -std= value always errors against browsercc's Clang.
-          await compile({ source: 'int main(){return 0;}', fileName: 'warmup.c', flags: ['-x', 'c', '-O2'] });
-        } finally {
-          if (interval) clearInterval(interval);
-          if (progressBar) progressBar.style.width = '100%';
-        }
-
+    }
+    compilerInitializing = true;
+    const statusEl = document.getElementById("compilerStatus");
+    try {
+        statusEl.textContent = "Compiler: downloading toolchain (~90MB, may take a while)...";
+        statusEl.className = "compiler-status loading";
+        await compile({
+            source: "int main(){return 0;}",
+            fileName: "warmup.c",
+            flags: [ "-x", "c", "-O2" ]
+        });
         compilerReady = true;
         compilerInitializing = false;
-        statusEl.textContent = 'Compiler: ready';
-        statusEl.className = 'compiler-status ready';
+        statusEl.textContent = "Compiler: ready";
+        statusEl.className = "compiler-status ready";
         return true;
-      } catch (error) {
-        console.error('Compiler initialization error:', error);
+    } catch (error) {
+        console.error("Compiler initialization error:", error);
         compilerInitializing = false;
-        statusEl.textContent = 'Compiler: error';
-        statusEl.className = 'compiler-status error';
+        statusEl.textContent = "Compiler: error";
+        statusEl.className = "compiler-status error";
         throw error;
-      }
     }
+}
 
-    // Known limitations of browsercc's bundled WASI-SDK sysroot that produce
-    // confusing linker/runtime errors. Rewrites them into a plain-language
-    // explanation so the user isn't left staring at raw wasm-ld output.
-    function explainCompilerError(text) {
-      if (!text) return text;
-      if (text.includes('__cxa_allocate_exception') || text.includes('__cxa_throw') || text.includes('__cxa_begin_catch')) {
-        return text + '\n\nNote: this compiler (browsercc, on WASI-SDK) does not support C++ exceptions ' +
-          '(throw/try/catch) because its libc++ was built without that support. ' +
-          'Rewrite the code without exceptions (for example, using error codes or std::optional).';
-      }
-      return text;
+function explainCompilerError(text) {
+    if (!text) return text;
+    if (text.includes("__cxa_allocate_exception") || text.includes("__cxa_throw") || text.includes("__cxa_begin_catch")) {
+        return text + "\n\nNote: this compiler (browsercc, on WASI-SDK) does not support C++ exceptions " + "(throw/try/catch) because its libc++ was built without that support. " + "Rewrite the code without exceptions (for example, using error codes or std::optional).";
     }
+    return text;
+}
 
-    // Compile C/C++ code using browsercc, then execute the resulting
-    // WebAssembly module through a WASI shim so we can capture stdout/stderr.
-    async function compileCode(code, filename) {
-      if (!compilerReady) {
-        await ensureCompiler();
-      }
-
-      const ext = getExt(filename);
-      const isCpp = ext === 'cpp' || ext === 'cc' || ext === 'cxx';
-
-      try {
-        // browsercc always boots Clang as "clang++" internally (hardcoded
-        // in its own source, not something this API lets us change), which
-        // locks the driver into C++ mode regardless of the file's
-        // extension or an -x flag - browsercc also places the filename
-        // before our flags in its internal invocation, so a trailing
-        // "-x c" never gets a chance to apply to it either. Concretely,
-        // this means an explicit C-only -std= value (e.g. -std=c11) is
-        // always rejected with "not allowed with 'C++'", even for a
-        // genuine .c file. The fix is to simply not pass a -std= for C at
-        // all and let clang use its own default C standard; C++ files are
-        // unaffected since the driver's C++ mode already matches -std=c++17.
-        const flags = ['-x', isCpp ? 'c++' : 'c', '-O2'];
-        if (isCpp) flags.push('-std=c++17', '-fno-exceptions');
-
-        const { compileOutput, module } = await compile({
-          source: code,
-          fileName: filename,
-          flags
-        });
-
-        if (!module) {
-          // Compilation itself failed - compileOutput holds the compiler diagnostics
-          return {
-            output: '',
-            error: explainCompilerError(compileOutput) || 'Compilation failed',
-            success: false
-          };
+// Builds the virtual working directory a compiled program sees: every
+// other file in the same gist, so a plain fopen("data.txt", "r") just
+// works with no code changes. Reuses fileStore's in-memory (possibly
+// edited) content when a sibling file is already open in another tab, and
+// caches freshly-fetched siblings into fileStore too. Returns both the
+// WASI-ready File map and a name->text snapshot used afterwards to detect
+// which files the program created or modified.
+async function buildInputFiles(currentFilename) {
+    const wasiFiles = new Map;
+    const snapshot = new Map;
+    for (const f of gistFiles) {
+        if (f.filename === currentFilename) continue;
+        let state = fileStore.get(f.filename);
+        if (!state) {
+            const original = await getFileContent(f);
+            state = { original: original, current: original };
+            fileStore.set(f.filename, state);
         }
+        snapshot.set(f.filename, state.current);
+        wasiFiles.set(f.filename, new File(new TextEncoder().encode(state.current)));
+    }
+    return { wasiFiles: wasiFiles, snapshot: snapshot };
+}
 
-        // Run the compiled program under WASI and capture its output
-        let stdout = '';
-        let stderr = '';
-        const fds = [
-          new OpenFile(new File([])),                                   // stdin
-          new ConsoleStdout(data => { stdout += new TextDecoder().decode(data); }), // stdout
-          new ConsoleStdout(data => { stderr += new TextDecoder().decode(data); }), // stderr
-        ];
+async function compileCode(code, filename) {
+    if (!compilerReady) {
+        await ensureCompiler();
+    }
+    const ext = getExt(filename);
+    const isCpp = ext === "cpp" || ext === "cc" || ext === "cxx";
+    try {
+        const flags = [ "-x", isCpp ? "c++" : "c", "-O2" ];
+        if (isCpp) flags.push("-std=c++17", "-fno-exceptions");
+        const {compileOutput: compileOutput, module: module} = await compile({
+            source: code,
+            fileName: filename,
+            flags: flags
+        });
+        if (!module) {
+            return {
+                output: "",
+                error: explainCompilerError(compileOutput) || "Compilation failed",
+                success: false,
+                files: []
+            };
+        }
+        let stdout = "";
+        let stderr = "";
+        const { wasiFiles: wasiFiles, snapshot: snapshot } = await buildInputFiles(filename);
+        const workDir = new PreopenDirectory(".", wasiFiles);
+        const fds = [ new OpenFile(new File([])), new ConsoleStdout(data => {
+            stdout += (new TextDecoder).decode(data);
+        }), new ConsoleStdout(data => {
+            stderr += (new TextDecoder).decode(data);
+        }), workDir ];
         const wasi = new WASI([], [], fds);
-
         let exitCode = 0;
         try {
-          const instance = await WebAssembly.instantiate(module, {
-            wasi_snapshot_preview1: wasi.wasiImport
-          });
-          exitCode = wasi.start(instance);
+            const instance = await WebAssembly.instantiate(module, {
+                wasi_snapshot_preview1: wasi.wasiImport
+            });
+            exitCode = wasi.start(instance);
         } catch (runErr) {
-          stderr += (stderr ? '\n' : '') + '[runtime error] ' + runErr.message;
-          exitCode = 1;
+            stderr += (stderr ? "\n" : "") + "[runtime error] " + runErr.message;
+            exitCode = 1;
         }
-
-        let error = compileOutput && compileOutput.trim() ? compileOutput.trim() : '';
-        if (stderr) error += (error ? '\n' : '') + stderr;
-
+        let error = compileOutput && compileOutput.trim() ? compileOutput.trim() : "";
+        if (stderr) error += (error ? "\n" : "") + stderr;
+        // Any file in the virtual directory that's new or whose content
+        // changed was created/written by the program itself. Purely
+        // in-memory - never touches the real gist.
+        const files = [];
+        for (const [name, inode] of workDir.dir.contents) {
+            if (!(inode instanceof File)) continue;
+            const text = new TextDecoder().decode(inode.data);
+            if (!snapshot.has(name) || snapshot.get(name) !== text) {
+                files.push({ name: name, content: text });
+            }
+        }
         return {
-          output: stdout,
-          error: explainCompilerError(error),
-          success: exitCode === 0
+            output: stdout,
+            error: explainCompilerError(error),
+            success: exitCode === 0,
+            files: files
         };
-      } catch (error) {
+    } catch (error) {
         return {
-          output: '',
-          error: explainCompilerError(error.message) || 'Compilation failed',
-          success: false
+            output: "",
+            error: explainCompilerError(error.message) || "Compilation failed",
+            success: false,
+            files: []
         };
-      }
     }
+}
 
-    // ============================================
-    // SEND CODE BY EMAIL (FormBold)
-    // ============================================
-    // Runs entirely as a same-context fetch() call - no new window/tab and
-    // no external application is launched, so it stays compatible with
-    // locked-down environments like Safe Exam Browser, as long as
-    // formbold.com is allowed in that exam's SEB URL filter.
-    //
-    // FormBold's submission endpoint (POST https://formbold.com/s/FORM_ID)
-    // is documented primarily for native <form action="..."> submits. It
-    // isn't documented to return a strict JSON success schema the way
-    // Web3Forms does, so success here is judged by response.ok rather than
-    // a specific field, and the FormBold dashboard's own settings for this
-    // form (Target Email, Allowed Domains) control where mail actually goes.
-    const FORMBOLD_FORM_ID = 'REPLACE_WITH_YOUR_FORMBOLD_FORM_ID';
+const FORMBOLD_FORM_ID = "REPLACE_WITH_YOUR_FORMBOLD_FORM_ID";
 
-    function getStudentId() {
-      const el = document.getElementById('studentId');
-      return el ? el.value.trim() : '';
-    }
+function getStudentId() {
+    const el = document.getElementById("studentId");
+    return el ? el.value.trim() : "";
+}
 
-    async function sendCodeByEmail(file, code) {
-      const studentId = getStudentId();
-      if (!studentId) {
-        const input = document.getElementById('studentId');
+async function sendCodeByEmail(file, code) {
+    const studentId = getStudentId();
+    if (!studentId) {
+        const input = document.getElementById("studentId");
         input.focus();
-        input.style.borderColor = '#d73a49';
-        setTimeout(() => { input.style.borderColor = ''; }, 1500);
-        throw new Error('Enter your name/student ID above before sending.');
-      }
-
-      const gistId = new URLSearchParams(window.location.search).get('id') || '';
-
-      const formData = new FormData();
-      formData.append('subject', `GistVis - ${file.filename} - ${studentId}`);
-      formData.append('name', studentId);
-      formData.append('student', studentId);
-      formData.append('filename', file.filename);
-      formData.append('gist_id', gistId);
-      formData.append('message', code);
-
-      const response = await fetch(`https://formbold.com/s/${FORMBOLD_FORM_ID}`, {
-        method: 'POST',
-        headers: { 'Accept': 'application/json' },
+        input.style.borderColor = "#d73a49";
+        setTimeout(() => {
+            input.style.borderColor = "";
+        }, 1500);
+        throw new Error("Enter your name/student ID above before sending.");
+    }
+    const gistId = new URLSearchParams(window.location.search).get("id") || "";
+    const formData = new FormData;
+    formData.append("subject", `GistVis - ${file.filename} - ${studentId}`);
+    formData.append("name", studentId);
+    formData.append("student", studentId);
+    formData.append("filename", file.filename);
+    formData.append("gist_id", gistId);
+    formData.append("message", code);
+    const response = await fetch(`https://formbold.com/s/${FORMBOLD_FORM_ID}`, {
+        method: "POST",
+        headers: {
+            Accept: "application/json"
+        },
         body: formData
-      });
-
-      let result = {};
-      try { result = await response.json(); } catch (e) { /* FormBold may not always return JSON */ }
-
-      if (!response.ok) {
-        throw new Error(result.message || result.error || 'Could not send the code.');
-      }
-      return result;
+    });
+    let result = {};
+    try {
+        result = await response.json();
+    } catch (e) {}
+    if (!response.ok) {
+        throw new Error(result.message || result.error || "Could not send the code.");
     }
+    return result;
+}
 
-    // ============================================
-    // GIST VISUALIZATION
-    // ============================================
-    let currentObjectUrl = null;
-    let currentFile = null;
-    // Per-file in-memory edit state, keyed by filename: { original, current }.
-    // Keeps unsaved textarea edits alive when switching between files (e.g.
-    // to read a Markdown file for reference) and back, instead of rebuilding
-    // the editor from the pristine GitHub content every time.
-    const fileStore = new Map();
-    let isModified = false;
+let currentObjectUrl = null;
 
-    const CODE_EXTS = ['cpp', 'php', 'py', 'js', 'java', 'c', 'h', 'rb', 'go', 'rs', 'ts', 'jsx', 'tsx', 'vue', 'css', 'scss', 'less', 'json', 'xml', 'yaml', 'yml', 'sql', 'sh', 'bash'];
-    const COMPILE_EXTS = ['c', 'cpp', 'cc', 'cxx'];
+const fileStore = new Map;
 
-    function getExt(filename) {
-      if (!filename) return '';
-      const parts = filename.split('.');
-      return parts.length > 1 ? parts.pop().toLowerCase() : '';
-    }
+// All files of the currently loaded gist (filename + metadata from the
+// GitHub API), populated by loadGist(). Used to expose sibling files as a
+// virtual working directory to a compiled program - see buildInputFiles().
+let gistFiles = [];
 
-    function isCodeFile(ext) {
-      return CODE_EXTS.includes(ext);
-    }
+const CODE_EXTS = [ "cpp", "php", "py", "js", "java", "c", "h", "rb", "go", "rs", "ts", "jsx", "tsx", "vue", "css", "scss", "less", "json", "xml", "yaml", "yml", "sql", "sh", "bash" ];
 
-    function isCompilable(ext) {
-      return COMPILE_EXTS.includes(ext);
-    }
+const COMPILE_EXTS = [ "c", "cpp", "cc", "cxx" ];
 
-    function getLanguageFromExt(ext) {
-      const map = {
-        'cpp': 'cpp', 'c': 'c', 'h': 'c', 'php': 'php', 'py': 'python',
-        'js': 'javascript', 'jsx': 'javascript', 'ts': 'typescript', 'tsx': 'typescript',
-        'java': 'java', 'rb': 'ruby', 'go': 'go', 'rs': 'rust', 'vue': 'vue',
-        'css': 'css', 'scss': 'scss', 'less': 'less', 'json': 'json',
-        'xml': 'xml', 'yaml': 'yaml', 'yml': 'yaml', 'sql': 'sql',
-        'sh': 'bash', 'bash': 'bash'
-      };
-      return map[ext] || ext;
-    }
+function getExt(filename) {
+    if (!filename) return "";
+    const parts = filename.split(".");
+    return parts.length > 1 ? parts.pop().toLowerCase() : "";
+}
 
-    async function loadGist() {
-      const params = new URLSearchParams(window.location.search);
-      const gistId = params.get("id");
+function isCodeFile(ext) {
+    return CODE_EXTS.includes(ext);
+}
 
-      if (!gistId) {
+function isCompilable(ext) {
+    return COMPILE_EXTS.includes(ext);
+}
+
+function getLanguageFromExt(ext) {
+    const map = {
+        cpp: "cpp",
+        c: "c",
+        h: "c",
+        php: "php",
+        py: "python",
+        js: "javascript",
+        jsx: "javascript",
+        ts: "typescript",
+        tsx: "typescript",
+        java: "java",
+        rb: "ruby",
+        go: "go",
+        rs: "rust",
+        vue: "vue",
+        css: "css",
+        scss: "scss",
+        less: "less",
+        json: "json",
+        xml: "xml",
+        yaml: "yaml",
+        yml: "yaml",
+        sql: "sql",
+        sh: "bash",
+        bash: "bash"
+    };
+    return map[ext] || ext;
+}
+
+async function loadGist() {
+    const params = new URLSearchParams(window.location.search);
+    const gistId = params.get("id");
+    if (!gistId) {
         document.querySelector(".content-wrapper").innerHTML = "<h2>Welcome</h2><p>Add <code>?id=YOUR_GIST_ID</code> to the URL to view files.</p>";
         return;
-      }
-
-      document.getElementById("gist-id").innerText = gistId;
-      document.getElementById("github-link").href = `https://gist.github.com/${gistId}`;
-
-      try {
+    }
+    document.getElementById("gist-id").innerText = gistId;
+    document.getElementById("github-link").href = `https://gist.github.com/${gistId}`;
+    try {
         const response = await fetch(`https://api.github.com/gists/${gistId}`);
         if (!response.ok) throw new Error("Gist not found.");
         const gist = await response.json();
-
         const fileListContainer = document.getElementById("fileList");
         const files = Object.values(gist.files || {});
-
         files.sort((a, b) => {
-          const aName = (a.filename || '').toLowerCase();
-          const bName = (b.filename || '').toLowerCase();
-          if (aName.startsWith("readme")) return -1;
-          if (bName.startsWith("readme")) return 1;
-          return aName.localeCompare(bName);
+            const aName = (a.filename || "").toLowerCase();
+            const bName = (b.filename || "").toLowerCase();
+            if (aName.startsWith("readme")) return -1;
+            if (bName.startsWith("readme")) return 1;
+            return aName.localeCompare(bName);
         });
-
+        gistFiles = files;
         document.getElementById("file-count").innerText = `${files.length} file(s)`;
         fileListContainer.innerHTML = "";
-
         files.forEach((file, index) => {
-          const li = document.createElement("li");
-          li.textContent = file.filename || "(untitled)";
-          li.onclick = () => {
-            document.querySelectorAll('#sidebar li').forEach(l => l.classList.remove('active'));
-            li.classList.add('active');
-            renderFile(file);
-            if (window.innerWidth <= 768) {
-                document.getElementById('content').scrollIntoView({ behavior: 'smooth' });
+            const li = document.createElement("li");
+            li.textContent = file.filename || "(untitled)";
+            li.onclick = () => {
+                document.querySelectorAll("#sidebar li").forEach(l => l.classList.remove("active"));
+                li.classList.add("active");
+                renderFile(file);
+                if (window.innerWidth <= 768) {
+                    document.getElementById("content").scrollIntoView({
+                        behavior: "smooth"
+                    });
+                }
+            };
+            fileListContainer.appendChild(li);
+            if (index === 0) {
+                li.classList.add("active");
+                renderFile(file);
             }
-          };
-          fileListContainer.appendChild(li);
-          if (index === 0) {
-            li.classList.add('active');
-            renderFile(file);
-          }
         });
-
-      } catch (error) {
+    } catch (error) {
         document.querySelector(".content-wrapper").innerText = "Error: " + error.message;
-      }
     }
+}
 
-    async function getFileContent(file) {
-      if (file.truncated) {
+async function getFileContent(file) {
+    if (file.truncated) {
         const response = await fetch(file.raw_url);
         return await response.text();
-      }
-      return file.content || "";
     }
+    return file.content || "";
+}
 
-    function createEditor(file, state) {
-      const ext = getExt(file.filename);
-      const lang = getLanguageFromExt(ext);
-      const isCompilableFile = isCompilable(ext);
-      const content = state.current;
-      
-      const container = document.createElement('div');
-      container.className = 'editor-container';
-      
-      // Toolbar
-      const toolbar = document.createElement('div');
-      toolbar.className = 'editor-toolbar';
-      toolbar.innerHTML = `
-        <span class="filename-display">${file.filename}</span>
-        <span style="flex:1"></span>
-        ${isCompilableFile ? `<button class="compile" id="compileBtn">Compile &amp; Run</button>` : ''}
-        <button class="send" id="sendBtn">Send</button>
-        <button class="danger" id="resetBtn">Reset</button>
-      `;
-      container.appendChild(toolbar);
-      
-      // Main area: editor + output
-      const mainArea = document.createElement('div');
-      mainArea.className = 'editor-main';
-      
-      // Textarea
-      const textarea = document.createElement('textarea');
-      textarea.className = 'editor-textarea';
-      textarea.value = content;
-      textarea.spellcheck = false;
-      textarea.style.tabSize = '2';
-      mainArea.appendChild(textarea);
-      
-      // Output panel
-      const outputDiv = document.createElement('div');
-      outputDiv.className = 'editor-output';
-      outputDiv.id = 'outputPanel';
-      outputDiv.textContent = 'Compilation output will appear here...';
-      mainArea.appendChild(outputDiv);
-      
-      container.appendChild(mainArea);
-      
-      // Status bar - reflects any edits already carried over from a
-      // previous visit to this file (state.current !== state.original).
-      let hasChanges = content !== state.original;
-      const status = document.createElement('div');
-      status.className = 'editor-status';
-      status.innerHTML = `
-        <span>${lang || 'text'}</span>
-        <span id="statusText" class="${hasChanges ? 'modified' : 'saved'}">${hasChanges ? 'Modified' : 'Saved'}</span>
-        <span id="lineCount">Lines: ${content.split('\n').length}</span>
-      `;
-      container.appendChild(status);
-
-      // Event listeners
-      const statusText = status.querySelector('#statusText');
-      const resetBtn = toolbar.querySelector('#resetBtn');
-      const compileBtn = toolbar.querySelector('#compileBtn');
-      const sendBtn = toolbar.querySelector('#sendBtn');
-      // Use the element reference directly - document.getElementById would
-      // return null here since this editor isn't attached to the DOM yet
-      // (renderFile() appends it after createEditor() returns).
-      const outputPanel = outputDiv;
-
-      textarea.addEventListener('input', () => {
+function createEditor(file, state) {
+    const ext = getExt(file.filename);
+    const lang = getLanguageFromExt(ext);
+    const isCompilableFile = isCompilable(ext);
+    const content = state.current;
+    const container = document.createElement("div");
+    container.className = "editor-container";
+    const toolbar = document.createElement("div");
+    toolbar.className = "editor-toolbar";
+    toolbar.innerHTML = `\n        <span class="filename-display">${file.filename}</span>\n        <span style="flex:1"></span>\n        ${isCompilableFile ? `<button class="compile" id="compileBtn">Compile &amp; Run</button>` : ""}\n        <button class="send" id="sendBtn">Send</button>\n        <button class="danger" id="resetBtn">Reset</button>\n      `;
+    container.appendChild(toolbar);
+    const mainArea = document.createElement("div");
+    mainArea.className = "editor-main";
+    const textarea = document.createElement("textarea");
+    textarea.className = "editor-textarea";
+    textarea.value = content;
+    textarea.spellcheck = false;
+    textarea.style.tabSize = "2";
+    mainArea.appendChild(textarea);
+    const outputDiv = document.createElement("div");
+    outputDiv.className = "editor-output";
+    outputDiv.id = "outputPanel";
+    outputDiv.textContent = "Compilation output will appear here...";
+    mainArea.appendChild(outputDiv);
+    // Files created/written by the running program (in-memory only, never
+    // saved to the gist). Hidden until a run actually produces one.
+    const filesPanel = document.createElement("div");
+    filesPanel.className = "files-panel";
+    filesPanel.innerHTML = `<div class="files-list"></div><div class="files-viewer">Select a file to view its content</div>`;
+    mainArea.appendChild(filesPanel);
+    const filesList = filesPanel.querySelector(".files-list");
+    const filesViewer = filesPanel.querySelector(".files-viewer");
+    function renderFilesPanel(files) {
+        if (!files || files.length === 0) {
+            filesPanel.classList.remove("visible");
+            filesList.innerHTML = "";
+            filesViewer.textContent = "Select a file to view its content";
+            return;
+        }
+        filesPanel.classList.add("visible");
+        filesList.innerHTML = "";
+        files.forEach((f, i) => {
+            const btn = document.createElement("button");
+            btn.textContent = f.name;
+            btn.className = i === 0 ? "active" : "";
+            btn.addEventListener("click", () => {
+                filesList.querySelectorAll("button").forEach(b => b.classList.remove("active"));
+                btn.classList.add("active");
+                filesViewer.textContent = f.content || "(empty file)";
+            });
+            filesList.appendChild(btn);
+        });
+        filesViewer.textContent = files[0].content || "(empty file)";
+    }
+    container.appendChild(mainArea);
+    let hasChanges = content !== state.original;
+    const status = document.createElement("div");
+    status.className = "editor-status";
+    status.innerHTML = `\n        <span>${lang || "text"}</span>\n        <span id="statusText" class="${hasChanges ? "modified" : "saved"}">${hasChanges ? "Modified" : "Saved"}</span>\n        <span id="lineCount">Lines: ${content.split("\n").length}</span>\n      `;
+    container.appendChild(status);
+    const statusText = status.querySelector("#statusText");
+    const resetBtn = toolbar.querySelector("#resetBtn");
+    const compileBtn = toolbar.querySelector("#compileBtn");
+    const sendBtn = toolbar.querySelector("#sendBtn");
+    const outputPanel = outputDiv;
+    textarea.addEventListener("input", () => {
         state.current = textarea.value;
         hasChanges = textarea.value !== state.original;
-        statusText.textContent = hasChanges ? 'Modified' : 'Saved';
-        statusText.className = hasChanges ? 'modified' : 'saved';
+        statusText.textContent = hasChanges ? "Modified" : "Saved";
+        statusText.className = hasChanges ? "modified" : "saved";
         updateLineCount();
-      });
-      
-      function updateLineCount() {
-        const lines = textarea.value.split('\n').length;
-        status.querySelector('#lineCount').textContent = `Lines: ${lines}`;
-      }
-      
-      // Send
-      sendBtn.addEventListener('click', async () => {
-        sendBtn.disabled = true;
-        sendBtn.textContent = 'Sending...';
-        try {
-          await sendCodeByEmail(file, textarea.value);
-          outputPanel.textContent = 'Code sent successfully (' + getStudentId() + ').';
-          outputPanel.className = 'editor-output success';
-        } catch (err) {
-          outputPanel.textContent = 'Error sending code: ' + err.message;
-          outputPanel.className = 'editor-output error';
-        } finally {
-          sendBtn.disabled = false;
-          sendBtn.textContent = 'Send';
-        }
-      });
-
-      // Reset
-      resetBtn.addEventListener('click', async () => {
-        if (confirm('Reload the original content from GitHub?')) {
-          try {
-            const freshContent = await getFileContent(file);
-            textarea.value = freshContent;
-            state.original = freshContent;
-            state.current = freshContent;
-            hasChanges = false;
-            statusText.textContent = 'Saved';
-            statusText.className = 'saved';
-            updateLineCount();
-            outputPanel.textContent = 'Compilation output will appear here...';
-            outputPanel.className = 'editor-output';
-          } catch (err) {
-            alert('Error reloading: ' + err.message);
-          }
-        }
-      });
-      
-      // Compile
-      if (compileBtn) {
-        compileBtn.addEventListener('click', async () => {
-          const code = textarea.value;
-          outputPanel.textContent = 'Compiling...';
-          outputPanel.className = 'editor-output info';
-          compileBtn.disabled = true;
-          compileBtn.textContent = 'Compiling...';
-          
-          try {
-            // Ensure compiler is ready
-            await ensureCompiler();
-            
-            // Compile and run
-            const result = await compileCode(code, file.filename);
-            
-            let output = '';
-            if (result.error) {
-              output += 'Compilation Error:\n' + result.error + '\n';
-            }
-            if (result.output) {
-              output += 'Program Output:\n' + result.output;
-            }
-            if (!result.output && !result.error && result.success) {
-              output = 'Compilation successful. No output.';
-            }
-
-            outputPanel.textContent = output || 'Compilation successful.';
-            outputPanel.className = 'editor-output ' + (result.error || !result.success ? 'error' : 'success');
-          } catch (error) {
-            outputPanel.textContent = 'Error during compilation: ' + error.message;
-            outputPanel.className = 'editor-output error';
-          } finally {
-            compileBtn.disabled = false;
-            compileBtn.textContent = 'Compile & Run';
-          }
-        });
-      }
-      
-      // Keyboard shortcuts
-      textarea.addEventListener('keydown', (e) => {
-        if (e.ctrlKey && e.key === 's') {
-          // No Save button anymore - just block the browser's native
-          // "Save Page As" dialog, which would be another way to dump
-          // content to disk outside the Send flow.
-          e.preventDefault();
-        }
-        if (e.ctrlKey && e.key === 'Enter' && compileBtn) {
-          e.preventDefault();
-          compileBtn.click();
-        }
-        if (e.key === 'Tab') {
-          e.preventDefault();
-          const start = textarea.selectionStart;
-          const end = textarea.selectionEnd;
-          const spaces = '  ';
-          textarea.value = textarea.value.substring(0, start) + spaces + textarea.value.substring(end);
-          textarea.selectionStart = textarea.selectionEnd = start + spaces.length;
-          textarea.dispatchEvent(new Event('input'));
-        }
-      });
-      
-      return container;
+    });
+    function updateLineCount() {
+        const lines = textarea.value.split("\n").length;
+        status.querySelector("#lineCount").textContent = `Lines: ${lines}`;
     }
-
-    async function renderFile(file) {
-      const wrapper = document.querySelector(".content-wrapper");
-      const ext = getExt(file.filename);
-      const imageExts = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
-
-      wrapper.innerHTML = "Loading file...";
-
-      try {
-        currentFile = file;
-        if (currentObjectUrl) { URL.revokeObjectURL(currentObjectUrl); }
-
-        // Editable (code/compilable) files reuse any in-memory edits from a
-        // previous visit instead of re-fetching the pristine GitHub content,
-        // so switching to another file (e.g. a Markdown doc) and back
-        // doesn't discard unsaved changes.
-        if (isCompilable(ext) || isCodeFile(ext)) {
-          let state = fileStore.get(file.filename);
-          if (!state) {
-            const original = await getFileContent(file);
-            state = { original, current: original };
-            fileStore.set(file.filename, state);
-          }
-          const editor = createEditor(file, state);
-          wrapper.innerHTML = '';
-          wrapper.appendChild(editor);
-          // Lazily warm up the compiler only when a compilable file is
-          // actually opened, instead of downloading ~90MB on every page
-          // load regardless of whether the user ever compiles anything.
-          if (isCompilable(ext) && !compilerReady && !compilerInitializing) {
-            ensureCompiler().catch(console.error);
-          }
-          return;
+    sendBtn.addEventListener("click", async () => {
+        sendBtn.disabled = true;
+        sendBtn.textContent = "Sending...";
+        try {
+            await sendCodeByEmail(file, textarea.value);
+            outputPanel.textContent = "Code sent successfully (" + getStudentId() + ").";
+            outputPanel.className = "editor-output success";
+        } catch (err) {
+            outputPanel.textContent = "Error sending code: " + err.message;
+            outputPanel.className = "editor-output error";
+        } finally {
+            sendBtn.disabled = false;
+            sendBtn.textContent = "Send";
         }
+    });
+    resetBtn.addEventListener("click", async () => {
+        if (confirm("Reload the original content from GitHub?")) {
+            try {
+                const freshContent = await getFileContent(file);
+                textarea.value = freshContent;
+                state.original = freshContent;
+                state.current = freshContent;
+                hasChanges = false;
+                statusText.textContent = "Saved";
+                statusText.className = "saved";
+                updateLineCount();
+                outputPanel.textContent = "Compilation output will appear here...";
+                outputPanel.className = "editor-output";
+                renderFilesPanel([]);
+            } catch (err) {
+                alert("Error reloading: " + err.message);
+            }
+        }
+    });
+    if (compileBtn) {
+        compileBtn.addEventListener("click", async () => {
+            const code = textarea.value;
+            outputPanel.textContent = "Compiling...";
+            outputPanel.className = "editor-output info";
+            renderFilesPanel([]);
+            compileBtn.disabled = true;
+            compileBtn.textContent = "Compiling...";
+            try {
+                await ensureCompiler();
+                const result = await compileCode(code, file.filename);
+                let output = "";
+                if (result.error) {
+                    output += "Compilation Error:\n" + result.error + "\n";
+                }
+                if (result.output) {
+                    output += "Program Output:\n" + result.output;
+                }
+                if (!result.output && !result.error && result.success) {
+                    output = "Compilation successful. No output.";
+                }
+                outputPanel.textContent = output || "Compilation successful.";
+                outputPanel.className = "editor-output " + (result.error || !result.success ? "error" : "success");
+                renderFilesPanel(result.files);
+            } catch (error) {
+                outputPanel.textContent = "Error during compilation: " + error.message;
+                outputPanel.className = "editor-output error";
+            } finally {
+                compileBtn.disabled = false;
+                compileBtn.textContent = "Compile & Run";
+            }
+        });
+    }
+    textarea.addEventListener("keydown", e => {
+        if (e.ctrlKey && e.key === "s") {
+            e.preventDefault();
+        }
+        if (e.ctrlKey && e.key === "Enter" && compileBtn) {
+            e.preventDefault();
+            compileBtn.click();
+        }
+        if (e.key === "Tab") {
+            e.preventDefault();
+            const start = textarea.selectionStart;
+            const end = textarea.selectionEnd;
+            const spaces = "  ";
+            textarea.value = textarea.value.substring(0, start) + spaces + textarea.value.substring(end);
+            textarea.selectionStart = textarea.selectionEnd = start + spaces.length;
+            textarea.dispatchEvent(new Event("input"));
+        }
+    });
+    return container;
+}
 
+async function renderFile(file) {
+    const wrapper = document.querySelector(".content-wrapper");
+    const ext = getExt(file.filename);
+    const imageExts = [ "jpg", "jpeg", "png", "gif", "webp" ];
+    wrapper.innerHTML = "Loading file...";
+    try {
+        if (currentObjectUrl) {
+            URL.revokeObjectURL(currentObjectUrl);
+        }
+        if (isCompilable(ext) || isCodeFile(ext)) {
+            let state = fileStore.get(file.filename);
+            if (!state) {
+                const original = await getFileContent(file);
+                state = {
+                    original: original,
+                    current: original
+                };
+                fileStore.set(file.filename, state);
+            }
+            const editor = createEditor(file, state);
+            wrapper.innerHTML = "";
+            wrapper.appendChild(editor);
+            if (isCompilable(ext) && !compilerReady && !compilerInitializing) {
+                ensureCompiler().catch(console.error);
+            }
+            return;
+        }
         const content = await getFileContent(file);
         const trimmedContent = content.trim();
-
-        if (ext === 'html' || ext === 'svg') {
-          const mimeType = ext === 'svg' ? 'image/svg+xml' : 'text/html';
-          const blob = new Blob([content], { type: mimeType });
-          currentObjectUrl = URL.createObjectURL(blob);
-
-          wrapper.innerHTML = `<iframe src="${currentObjectUrl}" class="adaptive-iframe" sandbox="allow-scripts allow-same-origin" title="${file.filename}"></iframe>`;
-          return;
+        if (ext === "html" || ext === "svg") {
+            const mimeType = ext === "svg" ? "image/svg+xml" : "text/html";
+            const blob = new Blob([ content ], {
+                type: mimeType
+            });
+            currentObjectUrl = URL.createObjectURL(blob);
+            wrapper.innerHTML = `<iframe src="${currentObjectUrl}" class="adaptive-iframe" sandbox="allow-scripts allow-same-origin" title="${file.filename}"></iframe>`;
+            return;
         }
-
         const base64Regex = /^data:image\/(png|jpg|jpeg|gif|webp|svg\+xml);base64,/;
-
         if (base64Regex.test(trimmedContent)) {
-          wrapper.innerHTML = `<img src="${trimmedContent}" alt="${file.filename}">`;
-          return;
+            wrapper.innerHTML = `<img src="${trimmedContent}" alt="${file.filename}">`;
+            return;
         }
-
         if (imageExts.includes(ext)) {
-          wrapper.innerHTML = `<img src="${file.raw_url}" alt="${file.filename}">`;
-          return;
+            wrapper.innerHTML = `<img src="${file.raw_url}" alt="${file.filename}">`;
+            return;
         }
-
-        if (file.language === "Markdown" || ext === 'md') {
-          wrapper.innerHTML = `<div class="markdown-body">${marked.parse(content)}</div>`;
-          wrapper.querySelectorAll('pre code').forEach(block => hljs.highlightElement(block));
-          return;
+        if (file.language === "Markdown" || ext === "md") {
+            wrapper.innerHTML = `<div class="markdown-body">${marked.parse(content)}</div>`;
+            wrapper.querySelectorAll("pre code").forEach(block => hljs.highlightElement(block));
+            return;
         }
-
-        // Default: show as code with syntax highlighting
         const pre = document.createElement("pre");
         const code = document.createElement("code");
         code.textContent = content;
-        if (file.language) { code.className = `language-${file.language.toLowerCase()}`; }
+        if (file.language) {
+            code.className = `language-${file.language.toLowerCase()}`;
+        }
         pre.appendChild(code);
         wrapper.innerHTML = "";
         wrapper.appendChild(pre);
         hljs.highlightElement(code);
-      } catch (err) {
+    } catch (err) {
         wrapper.innerHTML = `<p style="color:red">Error loading content: ${err.message}</p>`;
-      }
     }
+}
 
-    loadGist();
+loadGist();
   </script>
 </body>
 </html>
