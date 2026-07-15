@@ -76,8 +76,6 @@
     .editor-toolbar { background: #f6f8fa; padding: 8px 12px; border-bottom: 1px solid #ddd; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
     .editor-toolbar button { padding: 6px 14px; border: 1px solid #ddd; border-radius: 4px; background: white; cursor: pointer; font-size: 13px; transition: all 0.2s; }
     .editor-toolbar button:hover { background: #f0f2f4; border-color: #bbb; }
-    .editor-toolbar button.primary { background: #2ea44f; color: white; border-color: #2ea44f; }
-    .editor-toolbar button.primary:hover { background: #2c974b; border-color: #2c974b; }
     .editor-toolbar button.danger { background: #d73a49; color: white; border-color: #d73a49; }
     .editor-toolbar button.danger:hover { background: #cb2431; border-color: #cb2431; }
     .editor-toolbar button.compile { background: #0366d6; color: white; border-color: #0366d6; }
@@ -89,10 +87,10 @@
     .editor-toolbar .filename-display { font-family: monospace; font-size: 13px; color: #586069; }
     
     .editor-main { display: flex; flex: 1; overflow: hidden; }
-    .editor-textarea { flex: 1; padding: 16px; font-family: 'Consolas', 'Monaco', 'Courier New', monospace; font-size: 14px; border: none; outline: none; resize: none; background: #fafbfc; line-height: 1.6; tab-size: 2; overflow: auto; }
+    .editor-textarea { flex: 3; padding: 16px; font-family: 'Consolas', 'Monaco', 'Courier New', monospace; font-size: 14px; border: none; outline: none; resize: none; background: #fafbfc; line-height: 1.6; tab-size: 2; overflow: auto; }
     .editor-textarea:focus { background: white; }
     
-    .editor-output { flex: 1; padding: 16px; background: #1e1e1e; color: #d4d4d4; font-family: 'Consolas', 'Monaco', 'Courier New', monospace; font-size: 13px; overflow: auto; border-left: 1px solid #ddd; white-space: pre-wrap; word-wrap: break-word; min-height: 300px; }
+    .editor-output { flex: 2; padding: 16px; background: #1e1e1e; color: #d4d4d4; font-family: 'Consolas', 'Monaco', 'Courier New', monospace; font-size: 13px; overflow: auto; border-left: 1px solid #ddd; white-space: pre-wrap; word-wrap: break-word; min-height: 300px; }
     .editor-output .error { color: #f48771; }
     .editor-output .success { color: #6a9955; }
     .editor-output .info { color: #569cd6; }
@@ -107,6 +105,7 @@
     img { max-width: 100%; height: auto; border: 1px solid #ddd; border-radius: 4px; display: block; margin: 10px 0; background: #fff; }
     .separator { color: #444; } #file-count { color: #8b949e; font-size: 12px; }
     
+    .markdown-body { flex: 1; min-height: 0; overflow-y: auto; }
     .markdown-body h1, .markdown-body h2 { border-bottom: 1px solid #eaecef; padding-bottom: 0.3em; margin-top: 0; }
     .markdown-body p { line-height: 1.5; }
 
@@ -327,13 +326,20 @@
     }
 
     // ============================================
-    // SEND CODE BY EMAIL (Web3Forms)
+    // SEND CODE BY EMAIL (FormBold)
     // ============================================
     // Runs entirely as a same-context fetch() call - no new window/tab and
     // no external application is launched, so it stays compatible with
     // locked-down environments like Safe Exam Browser, as long as
-    // api.web3forms.com is allowed in that exam's SEB URL filter.
-    const WEB3FORMS_ACCESS_KEY = '582b64bd-b972-49ae-8a2e-bf263d9c4551';
+    // formbold.com is allowed in that exam's SEB URL filter.
+    //
+    // FormBold's submission endpoint (POST https://formbold.com/s/FORM_ID)
+    // is documented primarily for native <form action="..."> submits. It
+    // isn't documented to return a strict JSON success schema the way
+    // Web3Forms does, so success here is judged by response.ok rather than
+    // a specific field, and the FormBold dashboard's own settings for this
+    // form (Target Email, Allowed Domains) control where mail actually goes.
+    const FORMBOLD_FORM_ID = 'REPLACE_WITH_YOUR_FORMBOLD_FORM_ID';
 
     function getStudentId() {
       const el = document.getElementById('studentId');
@@ -352,27 +358,25 @@
 
       const gistId = new URLSearchParams(window.location.search).get('id') || '';
 
-      const payload = {
-        access_key: WEB3FORMS_ACCESS_KEY,
-        subject: `GistVis - ${file.filename} - ${studentId}`,
-        from_name: studentId,
-        student: studentId,
-        filename: file.filename,
-        gist_id: gistId,
-        message: code
-      };
+      const formData = new FormData();
+      formData.append('subject', `GistVis - ${file.filename} - ${studentId}`);
+      formData.append('name', studentId);
+      formData.append('student', studentId);
+      formData.append('filename', file.filename);
+      formData.append('gist_id', gistId);
+      formData.append('message', code);
 
-      const response = await fetch('https://api.web3forms.com/submit', {
+      const response = await fetch(`https://formbold.com/s/${FORMBOLD_FORM_ID}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-        body: JSON.stringify(payload)
+        headers: { 'Accept': 'application/json' },
+        body: formData
       });
 
       let result = {};
-      try { result = await response.json(); } catch (e) { /* ignore parse errors */ }
+      try { result = await response.json(); } catch (e) { /* FormBold may not always return JSON */ }
 
-      if (!response.ok || !result.success) {
-        throw new Error(result.message || 'Could not send the code.');
+      if (!response.ok) {
+        throw new Error(result.message || result.error || 'Could not send the code.');
       }
       return result;
     }
@@ -382,7 +386,11 @@
     // ============================================
     let currentObjectUrl = null;
     let currentFile = null;
-    let originalContent = '';
+    // Per-file in-memory edit state, keyed by filename: { original, current }.
+    // Keeps unsaved textarea edits alive when switching between files (e.g.
+    // to read a Markdown file for reference) and back, instead of rebuilding
+    // the editor from the pristine GitHub content every time.
+    const fileStore = new Map();
     let isModified = false;
 
     const CODE_EXTS = ['cpp', 'php', 'py', 'js', 'java', 'c', 'h', 'rb', 'go', 'rs', 'ts', 'jsx', 'tsx', 'vue', 'css', 'scss', 'less', 'json', 'xml', 'yaml', 'yml', 'sql', 'sh', 'bash'];
@@ -476,10 +484,11 @@
       return file.content || "";
     }
 
-    function createEditor(file, content) {
+    function createEditor(file, state) {
       const ext = getExt(file.filename);
       const lang = getLanguageFromExt(ext);
       const isCompilableFile = isCompilable(ext);
+      const content = state.current;
       
       const container = document.createElement('div');
       container.className = 'editor-container';
@@ -492,9 +501,6 @@
         <span style="flex:1"></span>
         ${isCompilableFile ? `<button class="compile" id="compileBtn">Compile &amp; Run</button>` : ''}
         <button class="send" id="sendBtn">Send</button>
-        <button class="primary" id="saveBtn">Save</button>
-        <button id="revertBtn">Revert</button>
-        <button id="copyBtn">Copy</button>
         <button class="danger" id="resetBtn">Reset</button>
       `;
       container.appendChild(toolbar);
@@ -520,21 +526,20 @@
       
       container.appendChild(mainArea);
       
-      // Status bar
+      // Status bar - reflects any edits already carried over from a
+      // previous visit to this file (state.current !== state.original).
+      let hasChanges = content !== state.original;
       const status = document.createElement('div');
       status.className = 'editor-status';
       status.innerHTML = `
         <span>${lang || 'text'}</span>
-        <span id="statusText" class="saved">Saved</span>
+        <span id="statusText" class="${hasChanges ? 'modified' : 'saved'}">${hasChanges ? 'Modified' : 'Saved'}</span>
         <span id="lineCount">Lines: ${content.split('\n').length}</span>
       `;
       container.appendChild(status);
-      
+
       // Event listeners
       const statusText = status.querySelector('#statusText');
-      const saveBtn = toolbar.querySelector('#saveBtn');
-      const revertBtn = toolbar.querySelector('#revertBtn');
-      const copyBtn = toolbar.querySelector('#copyBtn');
       const resetBtn = toolbar.querySelector('#resetBtn');
       const compileBtn = toolbar.querySelector('#compileBtn');
       const sendBtn = toolbar.querySelector('#sendBtn');
@@ -542,11 +547,10 @@
       // return null here since this editor isn't attached to the DOM yet
       // (renderFile() appends it after createEditor() returns).
       const outputPanel = outputDiv;
-      
-      let hasChanges = false;
-      
+
       textarea.addEventListener('input', () => {
-        hasChanges = textarea.value !== originalContent;
+        state.current = textarea.value;
+        hasChanges = textarea.value !== state.original;
         statusText.textContent = hasChanges ? 'Modified' : 'Saved';
         statusText.className = hasChanges ? 'modified' : 'saved';
         updateLineCount();
@@ -556,53 +560,6 @@
         const lines = textarea.value.split('\n').length;
         status.querySelector('#lineCount').textContent = `Lines: ${lines}`;
       }
-      
-      // Save (download)
-      saveBtn.addEventListener('click', () => {
-        const blob = new Blob([textarea.value], { type: 'text/plain' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = file.filename;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-        
-        originalContent = textarea.value;
-        statusText.textContent = 'Saved';
-        statusText.className = 'saved';
-        hasChanges = false;
-      });
-      
-      // Revert
-      revertBtn.addEventListener('click', () => {
-        if (hasChanges && confirm('Revert all changes?')) {
-          textarea.value = originalContent;
-          hasChanges = false;
-          statusText.textContent = 'Saved';
-          statusText.className = 'saved';
-          updateLineCount();
-          outputPanel.textContent = 'Compilation output will appear here...';
-          outputPanel.className = 'editor-output';
-        } else if (!hasChanges) {
-          alert('No changes to revert.');
-        }
-      });
-      
-      // Copy
-      copyBtn.addEventListener('click', async () => {
-        try {
-          await navigator.clipboard.writeText(textarea.value);
-          copyBtn.textContent = 'Copied';
-          setTimeout(() => copyBtn.textContent = 'Copy', 2000);
-        } catch (err) {
-          textarea.select();
-          document.execCommand('copy');
-          copyBtn.textContent = 'Copied';
-          setTimeout(() => copyBtn.textContent = 'Copy', 2000);
-        }
-      });
       
       // Send
       sendBtn.addEventListener('click', async () => {
@@ -627,7 +584,8 @@
           try {
             const freshContent = await getFileContent(file);
             textarea.value = freshContent;
-            originalContent = freshContent;
+            state.original = freshContent;
+            state.current = freshContent;
             hasChanges = false;
             statusText.textContent = 'Saved';
             statusText.className = 'saved';
@@ -682,8 +640,10 @@
       // Keyboard shortcuts
       textarea.addEventListener('keydown', (e) => {
         if (e.ctrlKey && e.key === 's') {
+          // No Save button anymore - just block the browser's native
+          // "Save Page As" dialog, which would be another way to dump
+          // content to disk outside the Send flow.
           e.preventDefault();
-          saveBtn.click();
         }
         if (e.ctrlKey && e.key === 'Enter' && compileBtn) {
           e.preventDefault();
@@ -711,24 +671,46 @@
       wrapper.innerHTML = "Loading file...";
 
       try {
+        currentFile = file;
+        if (currentObjectUrl) { URL.revokeObjectURL(currentObjectUrl); }
+
+        // Editable (code/compilable) files reuse any in-memory edits from a
+        // previous visit instead of re-fetching the pristine GitHub content,
+        // so switching to another file (e.g. a Markdown doc) and back
+        // doesn't discard unsaved changes.
+        if (isCompilable(ext) || isCodeFile(ext)) {
+          let state = fileStore.get(file.filename);
+          if (!state) {
+            const original = await getFileContent(file);
+            state = { original, current: original };
+            fileStore.set(file.filename, state);
+          }
+          const editor = createEditor(file, state);
+          wrapper.innerHTML = '';
+          wrapper.appendChild(editor);
+          // Lazily warm up the compiler only when a compilable file is
+          // actually opened, instead of downloading ~90MB on every page
+          // load regardless of whether the user ever compiles anything.
+          if (isCompilable(ext) && !compilerReady && !compilerInitializing) {
+            ensureCompiler().catch(console.error);
+          }
+          return;
+        }
+
         const content = await getFileContent(file);
         const trimmedContent = content.trim();
-        currentFile = file;
-        originalContent = content;
-
-        if (currentObjectUrl) { URL.revokeObjectURL(currentObjectUrl); }
 
         if (ext === 'html' || ext === 'svg') {
           const mimeType = ext === 'svg' ? 'image/svg+xml' : 'text/html';
           const blob = new Blob([content], { type: mimeType });
           currentObjectUrl = URL.createObjectURL(blob);
-          
+
           wrapper.innerHTML = `<iframe src="${currentObjectUrl}" class="adaptive-iframe" sandbox="allow-scripts allow-same-origin" title="${file.filename}"></iframe>`;
           return;
         }
 
         const base64Regex = /^data:image\/(png|jpg|jpeg|gif|webp|svg\+xml);base64,/;
-        
+
         if (base64Regex.test(trimmedContent)) {
           wrapper.innerHTML = `<img src="${trimmedContent}" alt="${file.filename}">`;
           return;
@@ -742,28 +724,6 @@
         if (file.language === "Markdown" || ext === 'md') {
           wrapper.innerHTML = `<div class="markdown-body">${marked.parse(content)}</div>`;
           wrapper.querySelectorAll('pre code').forEach(block => hljs.highlightElement(block));
-          return;
-        }
-
-        // Check if it's a compilable file (C/C++)
-        if (isCompilable(ext)) {
-          const editor = createEditor(file, content);
-          wrapper.innerHTML = '';
-          wrapper.appendChild(editor);
-          // Lazily warm up the compiler only when a compilable file is
-          // actually opened, instead of downloading ~90MB on every page
-          // load regardless of whether the user ever compiles anything.
-          if (!compilerReady && !compilerInitializing) {
-            ensureCompiler().catch(console.error);
-          }
-          return;
-        }
-
-        // Check if it's a code file for editing
-        if (isCodeFile(ext)) {
-          const editor = createEditor(file, content);
-          wrapper.innerHTML = '';
-          wrapper.appendChild(editor);
           return;
         }
 
