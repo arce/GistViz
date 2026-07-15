@@ -18,10 +18,29 @@
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
         navigator.serviceWorker.register('sw.js').catch((err) => {
-          console.warn('No se pudo registrar el service worker de cache del compilador:', err);
+          console.warn('Could not register the compiler cache service worker:', err);
         });
       });
     }
+
+    // Heuristic-only Safe Exam Browser check: SEB's desktop apps append a
+    // "SEB" / "SafeExamBrowser" token to the User-Agent string. This is
+    // NOT a security control - a student can override their User-Agent
+    // from any browser's devtools in a few seconds, so this only catches
+    // the case where someone opens the page in a regular browser by
+    // mistake and shows a visible reminder. Real enforcement (verifying
+    // SEB's per-request Config-Key/Browser-Exam-Key hash headers) can only
+    // happen on a server, which this static page doesn't have - that
+    // check belongs in the exam platform/LMS that hands out the link.
+    document.addEventListener('DOMContentLoaded', () => {
+      const ua = navigator.userAgent || '';
+      const looksLikeSEB = /SEB[\/\s]|SafeExamBrowser/i.test(ua);
+      if (!looksLikeSEB) {
+        const banner = document.getElementById('sebWarning');
+        if (banner) banner.classList.add('visible');
+        console.warn('Safe Exam Browser not detected in User-Agent (spoofable, informational only):', ua);
+      }
+    });
   </script>
 
   <style>
@@ -98,6 +117,9 @@
     .compiler-loading .progress-bar { height: 100%; background: #0366d6; width: 0%; transition: width 0.3s; }
     @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
 
+    #sebWarning { display: none; background: #d73a49; color: white; padding: 8px 15px; font-size: 13px; text-align: center; flex-shrink: 0; }
+    #sebWarning.visible { display: block; }
+
     @media (max-width: 768px) {
       .main-container { flex-direction: column; }
       #sidebar { width: 100%; height: 150px; border-right: none; border-bottom: 1px solid #e1e4e8; }
@@ -111,14 +133,15 @@
   </style>
 </head>
 <body>
+  <div id="sebWarning">This page does not appear to be running inside Safe Exam Browser. If this is an exam session, close this window and launch it through Safe Exam Browser instead.</div>
   <div id="topbar">
     <div class="logo-container"><span class="logo-gist">Gist</span><span class="logo-viz">Vis</span></div>
     <span class="separator">|</span>
     <span id="gist-id" style="font-family:monospace; color: #e1e4e8; font-size: 12px;"></span>
     <span id="file-count"></span>
-    <span id="compilerStatus" class="compiler-status idle">Compiler: en espera (se activa al abrir un .c/.cpp)</span>
+    <span id="compilerStatus" class="compiler-status idle">Compiler: idle (activates when you open a .c/.cpp file)</span>
     <div style="flex-grow: 1;"></div>
-    <input type="text" id="studentId" placeholder="Nombre / carné" title="Se incluye en los envíos de código">
+    <input type="text" id="studentId" placeholder="Name / student ID" title="Included in code submissions">
     <a href="#" id="github-link" target="_blank">GitHub</a>
   </div>
 
@@ -180,7 +203,7 @@
       const statusEl = document.getElementById('compilerStatus');
 
       try {
-        statusEl.textContent = 'Compiler: descargando toolchain (~90MB, puede tardar)...';
+        statusEl.textContent = 'Compiler: downloading toolchain (~90MB, may take a while)...';
         statusEl.className = 'compiler-status loading';
 
         // Show download progress (indeterminate - browsercc exposes no progress API)
@@ -205,7 +228,7 @@
 
         compilerReady = true;
         compilerInitializing = false;
-        statusEl.textContent = 'Compiler: listo';
+        statusEl.textContent = 'Compiler: ready';
         statusEl.className = 'compiler-status ready';
         return true;
       } catch (error) {
@@ -223,9 +246,9 @@
     function explainCompilerError(text) {
       if (!text) return text;
       if (text.includes('__cxa_allocate_exception') || text.includes('__cxa_throw') || text.includes('__cxa_begin_catch')) {
-        return text + '\n\nNota: este compilador (browsercc, sobre WASI-SDK) no soporta excepciones de C++ ' +
-          '(throw/try/catch) porque su libc++ viene compilada sin ese soporte. ' +
-          'Reescribe el código sin excepciones (por ejemplo, usando códigos de error o std::optional).';
+        return text + '\n\nNote: this compiler (browsercc, on WASI-SDK) does not support C++ exceptions ' +
+          '(throw/try/catch) because its libc++ was built without that support. ' +
+          'Rewrite the code without exceptions (for example, using error codes or std::optional).';
       }
       return text;
     }
@@ -324,7 +347,7 @@
         input.focus();
         input.style.borderColor = '#d73a49';
         setTimeout(() => { input.style.borderColor = ''; }, 1500);
-        throw new Error('Escribe tu nombre/carné arriba antes de enviar.');
+        throw new Error('Enter your name/student ID above before sending.');
       }
 
       const gistId = new URLSearchParams(window.location.search).get('id') || '';
@@ -349,7 +372,7 @@
       try { result = await response.json(); } catch (e) { /* ignore parse errors */ }
 
       if (!response.ok || !result.success) {
-        throw new Error(result.message || 'No se pudo enviar el código.');
+        throw new Error(result.message || 'Could not send the code.');
       }
       return result;
     }
@@ -554,7 +577,7 @@
       
       // Revert
       revertBtn.addEventListener('click', () => {
-        if (hasChanges && confirm('¿Revertir todos los cambios?')) {
+        if (hasChanges && confirm('Revert all changes?')) {
           textarea.value = originalContent;
           hasChanges = false;
           statusText.textContent = 'Saved';
@@ -563,7 +586,7 @@
           outputPanel.textContent = 'Compilation output will appear here...';
           outputPanel.className = 'editor-output';
         } else if (!hasChanges) {
-          alert('No hay cambios para revertir.');
+          alert('No changes to revert.');
         }
       });
       
@@ -587,10 +610,10 @@
         sendBtn.textContent = 'Sending...';
         try {
           await sendCodeByEmail(file, textarea.value);
-          outputPanel.textContent = 'Código enviado correctamente (' + getStudentId() + ').';
+          outputPanel.textContent = 'Code sent successfully (' + getStudentId() + ').';
           outputPanel.className = 'editor-output success';
         } catch (err) {
-          outputPanel.textContent = 'Error al enviar el código: ' + err.message;
+          outputPanel.textContent = 'Error sending code: ' + err.message;
           outputPanel.className = 'editor-output error';
         } finally {
           sendBtn.disabled = false;
@@ -600,7 +623,7 @@
 
       // Reset
       resetBtn.addEventListener('click', async () => {
-        if (confirm('¿Recargar el contenido original desde GitHub?')) {
+        if (confirm('Reload the original content from GitHub?')) {
           try {
             const freshContent = await getFileContent(file);
             textarea.value = freshContent;
@@ -612,7 +635,7 @@
             outputPanel.textContent = 'Compilation output will appear here...';
             outputPanel.className = 'editor-output';
           } catch (err) {
-            alert('Error al recargar: ' + err.message);
+            alert('Error reloading: ' + err.message);
           }
         }
       });
