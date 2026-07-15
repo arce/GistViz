@@ -49,6 +49,9 @@ document.addEventListener("DOMContentLoaded", () => {
     #sidebar ul { list-style: none; padding: 0; margin: 0; }
     #sidebar li { padding: 8px 12px; cursor: pointer; border-bottom: 1px solid #e1e4e8; font-size: 12px; font-family: monospace; color: #0366d6; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     #sidebar li:hover { background: #ebf0f4; } #sidebar li.active { background: #fff; border-left: 4px solid #3498db; color: #24292e; font-weight: bold; }
+    .sidebar-heading { padding: 10px 12px 4px; font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; color: #8b949e; }
+    #generatedFileList li { color: #6f42c1; }
+    #generatedFileList li.active { border-left-color: #6f42c1; }
     #content { flex: 1; padding: 20px; overflow: hidden; background: white; display: flex; flex-direction: column; }
     .content-wrapper { flex: 1; width: 100%; margin: 0; display: flex; flex-direction: column; overflow: hidden; }
     .adaptive-iframe { width: 100%; flex: 1; min-height: 500px; border: 1px solid #ddd; border-radius: 8px; background: #fff; }
@@ -73,12 +76,6 @@ document.addEventListener("DOMContentLoaded", () => {
     .editor-output .success { color: #6a9955; }
     .editor-output .info { color: #569cd6; }
     .editor-output .warn { color: #d4a72c; }
-    .files-panel { display: none; flex-direction: column; border-left: 1px solid #ddd; overflow: hidden; background: #fff; }
-    .files-panel.visible { display: flex; flex: 2; }
-    .files-panel .files-list { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px; border-bottom: 1px solid #ddd; background: #f6f8fa; flex-shrink: 0; }
-    .files-panel .files-list button { padding: 4px 10px; border: 1px solid #ddd; border-radius: 12px; background: white; cursor: pointer; font-size: 12px; font-family: monospace; }
-    .files-panel .files-list button.active { background: #6f42c1; color: white; border-color: #6f42c1; }
-    .files-panel .files-viewer { flex: 1; padding: 16px; overflow: auto; font-family: 'Consolas', 'Monaco', 'Courier New', monospace; font-size: 13px; white-space: pre-wrap; word-wrap: break-word; background: #1e1e1e; color: #d4d4d4; }
     .editor-status { padding: 6px 12px; background: #f6f8fa; border-top: 1px solid #ddd; font-size: 12px; color: #586069; display: flex; justify-content: space-between; }
     .editor-status .modified { color: #d73a49; font-weight: bold; }
     .editor-status .saved { color: #28a745; font-weight: bold; }
@@ -100,7 +97,6 @@ document.addEventListener("DOMContentLoaded", () => {
       .editor-container { min-height: 70vh; }
       .editor-main { flex-direction: column; }
       .editor-output { min-height: 200px; border-left: none; border-top: 1px solid #ddd; }
-      .files-panel.visible { min-height: 200px; border-left: none; border-top: 1px solid #ddd; }
     }
 
   </style>
@@ -119,7 +115,13 @@ document.addEventListener("DOMContentLoaded", () => {
   </div>
 
   <div class="main-container">
-    <div id="sidebar"><ul id="fileList"></ul></div>
+    <div id="sidebar">
+      <ul id="fileList"></ul>
+      <div id="generatedSection" style="display:none;">
+        <div class="sidebar-heading">Generated (this session)</div>
+        <ul id="generatedFileList"></ul>
+      </div>
+    </div>
     <div id="content"><div class="content-wrapper">Loading...</div></div>
   </div>
 
@@ -335,6 +337,11 @@ const fileStore = new Map;
 // virtual working directory to a compiled program - see buildInputFiles().
 let gistFiles = [];
 
+// Files created by a compiled program during this session (name -> content).
+// Rendered in the sidebar under "Generated" so they can be opened like any
+// other gist file. Never sent to GitHub.
+const generatedFiles = new Map();
+
 const CODE_EXTS = [ "cpp", "php", "py", "js", "java", "c", "h", "rb", "go", "rs", "ts", "jsx", "tsx", "vue", "css", "scss", "less", "json", "xml", "yaml", "yml", "sql", "sh", "bash" ];
 
 const COMPILE_EXTS = [ "c", "cpp", "cc", "cxx" ];
@@ -432,6 +439,36 @@ async function loadGist() {
     }
 }
 
+function renderGeneratedSidebar() {
+    const section = document.getElementById("generatedSection");
+    const list = document.getElementById("generatedFileList");
+    list.innerHTML = "";
+    if (generatedFiles.size === 0) {
+        section.style.display = "none";
+        return;
+    }
+    section.style.display = "";
+    for (const [ name, content ] of generatedFiles) {
+        const li = document.createElement("li");
+        li.textContent = name;
+        li.onclick = () => {
+            document.querySelectorAll("#sidebar li").forEach(l => l.classList.remove("active"));
+            li.classList.add("active");
+            renderFile({
+                filename: name,
+                content: content,
+                generated: true
+            });
+            if (window.innerWidth <= 768) {
+                document.getElementById("content").scrollIntoView({
+                    behavior: "smooth"
+                });
+            }
+        };
+        list.appendChild(li);
+    }
+}
+
 async function getFileContent(file) {
     if (file.truncated) {
         const response = await fetch(file.raw_url);
@@ -464,36 +501,6 @@ function createEditor(file, state) {
     outputDiv.id = "outputPanel";
     outputDiv.textContent = "Compilation output will appear here...";
     mainArea.appendChild(outputDiv);
-    // Files created/written by the running program (in-memory only, never
-    // saved to the gist). Hidden until a run actually produces one.
-    const filesPanel = document.createElement("div");
-    filesPanel.className = "files-panel";
-    filesPanel.innerHTML = `<div class="files-list"></div><div class="files-viewer">Select a file to view its content</div>`;
-    mainArea.appendChild(filesPanel);
-    const filesList = filesPanel.querySelector(".files-list");
-    const filesViewer = filesPanel.querySelector(".files-viewer");
-    function renderFilesPanel(files) {
-        if (!files || files.length === 0) {
-            filesPanel.classList.remove("visible");
-            filesList.innerHTML = "";
-            filesViewer.textContent = "Select a file to view its content";
-            return;
-        }
-        filesPanel.classList.add("visible");
-        filesList.innerHTML = "";
-        files.forEach((f, i) => {
-            const btn = document.createElement("button");
-            btn.textContent = f.name;
-            btn.className = i === 0 ? "active" : "";
-            btn.addEventListener("click", () => {
-                filesList.querySelectorAll("button").forEach(b => b.classList.remove("active"));
-                btn.classList.add("active");
-                filesViewer.textContent = f.content || "(empty file)";
-            });
-            filesList.appendChild(btn);
-        });
-        filesViewer.textContent = files[0].content || "(empty file)";
-    }
     container.appendChild(mainArea);
     let hasChanges = content !== state.original;
     const status = document.createElement("div");
@@ -544,7 +551,6 @@ function createEditor(file, state) {
                 updateLineCount();
                 outputPanel.textContent = "Compilation output will appear here...";
                 outputPanel.className = "editor-output";
-                renderFilesPanel([]);
             } catch (err) {
                 alert("Error reloading: " + err.message);
             }
@@ -555,7 +561,6 @@ function createEditor(file, state) {
             const code = textarea.value;
             outputPanel.textContent = "Compiling...";
             outputPanel.className = "editor-output info";
-            renderFilesPanel([]);
             compileBtn.disabled = true;
             compileBtn.textContent = "Compiling...";
             try {
@@ -573,7 +578,10 @@ function createEditor(file, state) {
                 }
                 outputPanel.textContent = output || "Compilation successful.";
                 outputPanel.className = "editor-output " + (result.error || !result.success ? "error" : "success");
-                renderFilesPanel(result.files);
+                if (result.files && result.files.length) {
+                    result.files.forEach(f => generatedFiles.set(f.name, f.content));
+                    renderGeneratedSidebar();
+                }
             } catch (error) {
                 outputPanel.textContent = "Error during compilation: " + error.message;
                 outputPanel.className = "editor-output error";
@@ -612,6 +620,20 @@ async function renderFile(file) {
     try {
         if (currentObjectUrl) {
             URL.revokeObjectURL(currentObjectUrl);
+        }
+        if (file.generated) {
+            const pre = document.createElement("pre");
+            const code = document.createElement("code");
+            code.textContent = file.content;
+            const lang = getLanguageFromExt(ext);
+            if (lang) {
+                code.className = `language-${lang.toLowerCase()}`;
+            }
+            pre.appendChild(code);
+            wrapper.innerHTML = "";
+            wrapper.appendChild(pre);
+            hljs.highlightElement(code);
+            return;
         }
         if (isCompilable(ext) || isCodeFile(ext)) {
             let state = fileStore.get(file.filename);
