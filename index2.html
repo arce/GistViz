@@ -263,13 +263,21 @@
       const isCpp = ext === 'cpp' || ext === 'cc' || ext === 'cxx';
 
       try {
+        // Force the source language explicitly instead of letting clang
+        // infer it from the file extension. clang's own convention treats
+        // a capital ".C" (and other odd casings some gist filenames end up
+        // with) as C++ regardless of our -std= choice, which produced
+        // "invalid argument '-std=c11' not allowed with 'C++'" for .c
+        // files whose name wasn't a lowercase ".c". Using -x pins the
+        // language to what we already detected from the (lowercased) ext.
+        //
         // browsercc links against the stock WASI-SDK sysroot, whose
         // libc++/libc++abi are built without exception support (no
         // __cxa_allocate_exception/__cxa_throw in the runtime). Passing
         // -fno-exceptions makes clang reject `throw`/`try`/`catch` with a
         // clear compile-time diagnostic pointing at the offending line,
         // instead of a confusing "undefined symbol" error from the linker.
-        const flags = ['-std=' + (isCpp ? 'c++17' : 'c11'), '-O2'];
+        const flags = ['-x', isCpp ? 'c++' : 'c', '-std=' + (isCpp ? 'c++17' : 'c11'), '-O2'];
         if (isCpp) flags.push('-fno-exceptions');
 
         const { compileOutput, module } = await compile({
