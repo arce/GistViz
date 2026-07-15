@@ -219,7 +219,9 @@
         }
 
         try {
-          await compile({ source: 'int main(){return 0;}', fileName: 'warmup.c', flags: ['-std=c11'] });
+          // No -std= here either - see compileCode() for why passing a
+          // C-only -std= value always errors against browsercc's Clang.
+          await compile({ source: 'int main(){return 0;}', fileName: 'warmup.c', flags: ['-x', 'c', '-O2'] });
         } finally {
           if (interval) clearInterval(interval);
           if (progressBar) progressBar.style.width = '100%';
@@ -263,22 +265,19 @@
       const isCpp = ext === 'cpp' || ext === 'cc' || ext === 'cxx';
 
       try {
-        // Force the source language explicitly instead of letting clang
-        // infer it from the file extension. clang's own convention treats
-        // a capital ".C" (and other odd casings some gist filenames end up
-        // with) as C++ regardless of our -std= choice, which produced
-        // "invalid argument '-std=c11' not allowed with 'C++'" for .c
-        // files whose name wasn't a lowercase ".c". Using -x pins the
-        // language to what we already detected from the (lowercased) ext.
-        //
-        // browsercc links against the stock WASI-SDK sysroot, whose
-        // libc++/libc++abi are built without exception support (no
-        // __cxa_allocate_exception/__cxa_throw in the runtime). Passing
-        // -fno-exceptions makes clang reject `throw`/`try`/`catch` with a
-        // clear compile-time diagnostic pointing at the offending line,
-        // instead of a confusing "undefined symbol" error from the linker.
-        const flags = ['-x', isCpp ? 'c++' : 'c', '-std=' + (isCpp ? 'c++17' : 'c11'), '-O2'];
-        if (isCpp) flags.push('-fno-exceptions');
+        // browsercc always boots Clang as "clang++" internally (hardcoded
+        // in its own source, not something this API lets us change), which
+        // locks the driver into C++ mode regardless of the file's
+        // extension or an -x flag - browsercc also places the filename
+        // before our flags in its internal invocation, so a trailing
+        // "-x c" never gets a chance to apply to it either. Concretely,
+        // this means an explicit C-only -std= value (e.g. -std=c11) is
+        // always rejected with "not allowed with 'C++'", even for a
+        // genuine .c file. The fix is to simply not pass a -std= for C at
+        // all and let clang use its own default C standard; C++ files are
+        // unaffected since the driver's C++ mode already matches -std=c++17.
+        const flags = ['-x', isCpp ? 'c++' : 'c', '-O2'];
+        if (isCpp) flags.push('-std=c++17', '-fno-exceptions');
 
         const { compileOutput, module } = await compile({
           source: code,
