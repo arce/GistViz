@@ -313,6 +313,8 @@ async function compileCode(code, filename) {
     }
 }
 
+const LOAD_TIMEOUT_MS = 3e4;
+
 const EXEC_TIMEOUT_MS = 8e3;
 
 const WASMOON_VERSION = "1.16.0";
@@ -320,6 +322,10 @@ const WASMOON_VERSION = "1.16.0";
 const WASMOON_ESM_URL = `https://cdn.jsdelivr.net/npm/wasmoon@${WASMOON_VERSION}/+esm`;
 
 const WASMOON_WASM_URL = `https://cdn.jsdelivr.net/npm/wasmoon@${WASMOON_VERSION}/dist/glue.wasm`;
+
+const PYODIDE_VERSION = "0.27.7";
+
+const PYODIDE_INDEX_URL = `https://cdn.jsdelivr.net/pyodide/v${PYODIDE_VERSION}/full/`;
 
 function buildJsWorkerSource() {
     return `
@@ -361,6 +367,7 @@ function resolveModuleGraph(jsFiles) {
     return resolved;
 }
 self.onmessage = async (e) => {
+    self.postMessage({ type: "ready" });
     const { code, files } = e.data;
     const fileMap = new Map(Object.entries(files));
     const snapshot = new Map(fileMap);
@@ -397,7 +404,7 @@ self.onmessage = async (e) => {
             changedFiles.push({ name, content });
         }
     }
-    self.postMessage({ output, error, files: changedFiles });
+    self.postMessage({ type: "done", output, error, files: changedFiles });
 };
 `;
 }
@@ -415,6 +422,7 @@ self.onmessage = async (e) => {
     try {
         const factory = new LuaFactory("${wasmUrl}");
         lua = await factory.createEngine();
+        self.postMessage({ type: "ready" });
         lua.global.set("print", (...args) => {
             output += args.map((a) => String(a)).join("\\t") + "\\n";
         });
@@ -466,14 +474,69 @@ self.onmessage = async (e) => {
             changedFiles.push({ name, content });
         }
     }
-    self.postMessage({ output, error, files: changedFiles });
+    self.postMessage({ type: "done", output, error, files: changedFiles });
 };
 `;
 }
 
-function runInWorker(kind, code, filesObj, timeoutMs) {
+function buildPyWorkerSource(indexUrl) {
+    return `
+import { loadPyodide } from "${indexUrl}pyodide.mjs";
+self.onmessage = async (e) => {
+    const { code, files } = e.data;
+    const fileMap = new Map(Object.entries(files));
+    const snapshot = new Map(fileMap);
+    let output = "";
+    let error = "";
+    try {
+        const pyodide = await loadPyodide({
+            indexURL: "${indexUrl}",
+            fullStdLib: false,
+            stdout: (s) => { output += s + "\\n"; },
+            stderr: (s) => { error += (error ? "\\n" : "") + s; }
+        });
+        self.postMessage({ type: "ready" });
+        for (const [name, content] of fileMap) {
+            try {
+                pyodide.FS.writeFile(name, content);
+            } catch (_) {}
+        }
+        try {
+            await pyodide.runPythonAsync(code);
+        } catch (err) {
+            error += (error ? "\\n" : "") + ((err && err.message) ? err.message : String(err));
+        }
+        const finalNames = pyodide.FS.readdir(".").filter((n) => n !== "." && n !== "..");
+        const changedFiles = [];
+        for (const name of finalNames) {
+            let content;
+            try {
+                content = pyodide.FS.readFile(name, { encoding: "utf8" });
+            } catch (_) {
+                continue;
+            }
+            if (!snapshot.has(name) || snapshot.get(name) !== content) {
+                changedFiles.push({ name, content });
+            }
+        }
+        self.postMessage({ type: "done", output, error, files: changedFiles });
+    } catch (err) {
+        self.postMessage({
+            type: "done",
+            output,
+            error: (error ? error + "\\n" : "") + (((err && err.message) ? err.message : String(err))),
+            files: []
+        });
+    }
+};
+`;
+}
+
+function runInWorker(kind, code, filesObj, loadTimeoutMs, execTimeoutMs) {
     return new Promise(resolve => {
-        const src = kind === "lua" ? buildLuaWorkerSource(WASMOON_ESM_URL, WASMOON_WASM_URL) : buildJsWorkerSource();
+        const src = kind === "lua" ? buildLuaWorkerSource(WASMOON_ESM_URL, WASMOON_WASM_URL)
+            : kind === "py" ? buildPyWorkerSource(PYODIDE_INDEX_URL)
+            : buildJsWorkerSource();
         const blob = new Blob([ src ], {
             type: "text/javascript"
         });
@@ -494,24 +557,40 @@ function runInWorker(kind, code, filesObj, timeoutMs) {
             return;
         }
         let settled = false;
+        let loadTimer = null;
+        let execTimer = null;
         const finish = result => {
             if (settled) return;
             settled = true;
-            clearTimeout(timer);
+            clearTimeout(loadTimer);
+            clearTimeout(execTimer);
             URL.revokeObjectURL(workerUrl);
             worker.terminate();
             resolve(result);
         };
-        const timer = setTimeout(() => {
+        loadTimer = setTimeout(() => {
             finish({
                 output: "",
-                error: `Execution timed out after ${timeoutMs / 1e3}s (possible infinite loop).`,
+                error: `Timed out loading the ${kind} runtime after ${loadTimeoutMs / 1e3}s (check your connection).`,
                 success: false,
                 files: []
             });
-        }, timeoutMs);
+        }, loadTimeoutMs);
         worker.onmessage = e => {
-            const {output: output, error: error, files: files} = e.data || {};
+            const msg = e.data || {};
+            if (msg.type === "ready") {
+                clearTimeout(loadTimer);
+                execTimer = setTimeout(() => {
+                    finish({
+                        output: "",
+                        error: `Execution timed out after ${execTimeoutMs / 1e3}s (possible infinite loop).`,
+                        success: false,
+                        files: []
+                    });
+                }, execTimeoutMs);
+                return;
+            }
+            const {output: output, error: error, files: files} = msg;
             finish({
                 output: output || "",
                 error: error || "",
@@ -536,9 +615,9 @@ function runInWorker(kind, code, filesObj, timeoutMs) {
 
 async function runScript(code, filename) {
     const ext = getExt(filename);
-    const kind = ext === "lua" ? "lua" : "js";
+    const kind = ext === "lua" ? "lua" : ext === "py" ? "py" : "js";
     const filesObj = await buildScriptFiles(filename);
-    return runInWorker(kind, code, filesObj, EXEC_TIMEOUT_MS);
+    return runInWorker(kind, code, filesObj, LOAD_TIMEOUT_MS, EXEC_TIMEOUT_MS);
 }
 
 const FORMBOLD_FORM_ID = "REPLACE_WITH_YOUR_FORMBOLD_FORM_ID";
@@ -596,7 +675,7 @@ const CODE_EXTS = [ "cpp", "hpp", "php", "py", "js", "lua", "java", "c", "h", "r
 
 const COMPILE_EXTS = [ "c", "cpp", "cc", "cxx" ];
 
-const SCRIPT_EXTS = [ "js", "lua" ];
+const SCRIPT_EXTS = [ "js", "lua", "py" ];
 
 function getExt(filename) {
     if (!filename) return "";

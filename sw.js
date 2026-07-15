@@ -15,10 +15,11 @@
 const CACHE_NAME = 'gistvis-compiler-cache-v1';
 
 function isCompilerAsset(url) {
-  return url.hostname === 'cdn.jsdelivr.net' &&
-    (url.pathname.includes('/npm/browsercc@') ||
-     url.pathname.includes('/npm/@bjorn3/browser_wasi_shim@') ||
-     url.pathname.includes('/npm/wasmoon@'));
+  if (url.hostname !== 'cdn.jsdelivr.net') return false;
+  return url.pathname.includes('/npm/browsercc@') ||
+    url.pathname.includes('/npm/@bjorn3/browser_wasi_shim@') ||
+    url.pathname.includes('/npm/wasmoon@') ||
+    url.pathname.startsWith('/pyodide/');
 }
 
 self.addEventListener('install', () => {
