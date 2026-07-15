@@ -30,6 +30,9 @@
     #topbar { background: #24292e; color: white; padding: 10px 15px; font-size: 14px; display: flex; gap: 15px; flex-shrink: 0; align-items: center; border-bottom: 1px solid #444; flex-wrap: wrap; z-index: 10; }
     .logo-gist { color: #3498db; } .logo-viz { color: #2ecc71; } .logo-container { font-size: 18px; font-weight: bold; margin-right: 5px; }
     #topbar a { color: #adb5bd; text-decoration: none; font-size: 12px; } #topbar a:hover { color: white; text-decoration: underline; }
+    #studentId { background: #1c2128; border: 1px solid #444; color: #e1e4e8; font-size: 12px; padding: 5px 8px; border-radius: 4px; width: 150px; }
+    #studentId::placeholder { color: #6a737d; }
+    #studentId:focus { outline: none; border-color: #6f42c1; }
     .compiler-status { font-size: 11px; color: #8b949e; margin-left: 10px; display: inline-flex; align-items: center; gap: 6px; }
     .compiler-status::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
     .compiler-status.ready { color: #2ea44f; }
@@ -61,6 +64,9 @@
     .editor-toolbar button.compile { background: #0366d6; color: white; border-color: #0366d6; }
     .editor-toolbar button.compile:hover { background: #0256b3; border-color: #0256b3; }
     .editor-toolbar button.compile:disabled { opacity: 0.5; cursor: not-allowed; }
+    .editor-toolbar button.send { background: #6f42c1; color: white; border-color: #6f42c1; }
+    .editor-toolbar button.send:hover { background: #5a32a3; border-color: #5a32a3; }
+    .editor-toolbar button.send:disabled { opacity: 0.5; cursor: not-allowed; }
     .editor-toolbar .filename-display { font-family: monospace; font-size: 13px; color: #586069; }
     
     .editor-main { display: flex; flex: 1; overflow: hidden; }
@@ -112,6 +118,7 @@
     <span id="file-count"></span>
     <span id="compilerStatus" class="compiler-status idle">Compiler: en espera (se activa al abrir un .c/.cpp)</span>
     <div style="flex-grow: 1;"></div>
+    <input type="text" id="studentId" placeholder="Nombre / carné" title="Se incluye en los envíos de código">
     <a href="#" id="github-link" target="_blank">GitHub</a>
   </div>
 
@@ -297,6 +304,57 @@
     }
 
     // ============================================
+    // SEND CODE BY EMAIL (Web3Forms)
+    // ============================================
+    // Runs entirely as a same-context fetch() call - no new window/tab and
+    // no external application is launched, so it stays compatible with
+    // locked-down environments like Safe Exam Browser, as long as
+    // api.web3forms.com is allowed in that exam's SEB URL filter.
+    const WEB3FORMS_ACCESS_KEY = '582b64bd-b972-49ae-8a2e-bf263d9c4551';
+
+    function getStudentId() {
+      const el = document.getElementById('studentId');
+      return el ? el.value.trim() : '';
+    }
+
+    async function sendCodeByEmail(file, code) {
+      const studentId = getStudentId();
+      if (!studentId) {
+        const input = document.getElementById('studentId');
+        input.focus();
+        input.style.borderColor = '#d73a49';
+        setTimeout(() => { input.style.borderColor = ''; }, 1500);
+        throw new Error('Escribe tu nombre/carné arriba antes de enviar.');
+      }
+
+      const gistId = new URLSearchParams(window.location.search).get('id') || '';
+
+      const payload = {
+        access_key: WEB3FORMS_ACCESS_KEY,
+        subject: `GistVis - ${file.filename} - ${studentId}`,
+        from_name: studentId,
+        student: studentId,
+        filename: file.filename,
+        gist_id: gistId,
+        message: code
+      };
+
+      const response = await fetch('https://api.web3forms.com/submit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      let result = {};
+      try { result = await response.json(); } catch (e) { /* ignore parse errors */ }
+
+      if (!response.ok || !result.success) {
+        throw new Error(result.message || 'No se pudo enviar el código.');
+      }
+      return result;
+    }
+
+    // ============================================
     // GIST VISUALIZATION
     // ============================================
     let currentObjectUrl = null;
@@ -410,6 +468,7 @@
         <span class="filename-display">${file.filename}</span>
         <span style="flex:1"></span>
         ${isCompilableFile ? `<button class="compile" id="compileBtn">Compile &amp; Run</button>` : ''}
+        <button class="send" id="sendBtn">Send</button>
         <button class="primary" id="saveBtn">Save</button>
         <button id="revertBtn">Revert</button>
         <button id="copyBtn">Copy</button>
@@ -455,6 +514,7 @@
       const copyBtn = toolbar.querySelector('#copyBtn');
       const resetBtn = toolbar.querySelector('#resetBtn');
       const compileBtn = toolbar.querySelector('#compileBtn');
+      const sendBtn = toolbar.querySelector('#sendBtn');
       // Use the element reference directly - document.getElementById would
       // return null here since this editor isn't attached to the DOM yet
       // (renderFile() appends it after createEditor() returns).
@@ -521,6 +581,23 @@
         }
       });
       
+      // Send
+      sendBtn.addEventListener('click', async () => {
+        sendBtn.disabled = true;
+        sendBtn.textContent = 'Sending...';
+        try {
+          await sendCodeByEmail(file, textarea.value);
+          outputPanel.textContent = 'Código enviado correctamente (' + getStudentId() + ').';
+          outputPanel.className = 'editor-output success';
+        } catch (err) {
+          outputPanel.textContent = 'Error al enviar el código: ' + err.message;
+          outputPanel.className = 'editor-output error';
+        } finally {
+          sendBtn.disabled = false;
+          sendBtn.textContent = 'Send';
+        }
+      });
+
       // Reset
       resetBtn.addEventListener('click', async () => {
         if (confirm('¿Recargar el contenido original desde GitHub?')) {
