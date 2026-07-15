@@ -17,7 +17,8 @@ const CACHE_NAME = 'gistvis-compiler-cache-v1';
 function isCompilerAsset(url) {
   return url.hostname === 'cdn.jsdelivr.net' &&
     (url.pathname.includes('/npm/browsercc@') ||
-     url.pathname.includes('/npm/@bjorn3/browser_wasi_shim@'));
+     url.pathname.includes('/npm/@bjorn3/browser_wasi_shim@') ||
+     url.pathname.includes('/npm/wasmoon@'));
 }
 
 self.addEventListener('install', () => {

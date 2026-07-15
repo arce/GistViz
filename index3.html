@@ -1,0 +1,964 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GistVis - Editor, Compiler & Runner (C/C++, JS, Lua)</title>
+
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+
+  <script>
+if ("serviceWorker" in navigator) {
+    window.addEventListener("load", () => {
+        navigator.serviceWorker.register("sw.js").catch(err => {
+            console.warn("Could not register the compiler cache service worker:", err);
+        });
+    });
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+    const ua = navigator.userAgent || "";
+    const looksLikeSEB = /SEB[\/\s]|SafeExamBrowser/i.test(ua);
+    if (!looksLikeSEB) {
+        const banner = document.getElementById("sebWarning");
+        if (banner) banner.classList.add("visible");
+        console.warn("Safe Exam Browser not detected in User-Agent (spoofable, informational only):", ua);
+    }
+});
+  </script>
+
+  <style>
+
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; margin: 0; display: flex; height: 100vh; flex-direction: column; color: #24292e; background: #f6f8fa; }
+    #topbar { background: #24292e; color: white; padding: 10px 15px; font-size: 14px; display: flex; gap: 15px; flex-shrink: 0; align-items: center; border-bottom: 1px solid #444; flex-wrap: wrap; z-index: 10; }
+    .logo-gist { color: #3498db; } .logo-viz { color: #2ecc71; } .logo-container { font-size: 18px; font-weight: bold; margin-right: 5px; }
+    #topbar a { color: #adb5bd; text-decoration: none; font-size: 12px; } #topbar a:hover { color: white; text-decoration: underline; }
+    #studentId { background: #1c2128; border: 1px solid #444; color: #e1e4e8; font-size: 12px; padding: 5px 8px; border-radius: 4px; width: 150px; }
+    #studentId::placeholder { color: #6a737d; }
+    #studentId:focus { outline: none; border-color: #6f42c1; }
+    .compiler-status { font-size: 11px; color: #8b949e; margin-left: 10px; display: inline-flex; align-items: center; gap: 6px; }
+    .compiler-status::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
+    .compiler-status.ready { color: #2ea44f; }
+    .compiler-status.loading { color: #f0b400; }
+    .compiler-status.idle { color: #8b949e; }
+    .compiler-status.error { color: #d73a49; }
+    .main-container { display: flex; flex: 1; overflow: hidden; flex-direction: row; }
+    #sidebar { width: 220px; background: #f6f8fa; border-right: 1px solid #e1e4e8; overflow-y: auto; flex-shrink: 0; }
+    #sidebar ul { list-style: none; padding: 0; margin: 0; }
+    #sidebar li { padding: 8px 12px; cursor: pointer; border-bottom: 1px solid #e1e4e8; font-size: 12px; font-family: monospace; color: #0366d6; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    #sidebar li:hover { background: #ebf0f4; } #sidebar li.active { background: #fff; border-left: 4px solid #3498db; color: #24292e; font-weight: bold; }
+    .sidebar-heading { padding: 10px 12px 4px; font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; color: #8b949e; }
+    #generatedFileList li { color: #6f42c1; }
+    #generatedFileList li.active { border-left-color: #6f42c1; }
+    #content { flex: 1; padding: 20px; overflow: hidden; background: white; display: flex; flex-direction: column; }
+    .content-wrapper { flex: 1; width: 100%; margin: 0; display: flex; flex-direction: column; overflow: hidden; }
+    .adaptive-iframe { width: 100%; flex: 1; min-height: 500px; border: 1px solid #ddd; border-radius: 8px; background: #fff; }
+    .editor-container { display: flex; flex-direction: column; height: 100%; min-height: 500px; border: 1px solid #ddd; border-radius: 8px; overflow: hidden; background: #fafbfc; }
+    .editor-toolbar { background: #f6f8fa; padding: 8px 12px; border-bottom: 1px solid #ddd; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    .editor-toolbar button { padding: 6px 14px; border: 1px solid #ddd; border-radius: 4px; background: white; cursor: pointer; font-size: 13px; transition: all 0.2s; }
+    .editor-toolbar button:hover { background: #f0f2f4; border-color: #bbb; }
+    .editor-toolbar button.danger { background: #d73a49; color: white; border-color: #d73a49; }
+    .editor-toolbar button.danger:hover { background: #cb2431; border-color: #cb2431; }
+    .editor-toolbar button.compile { background: #0366d6; color: white; border-color: #0366d6; }
+    .editor-toolbar button.compile:hover { background: #0256b3; border-color: #0256b3; }
+    .editor-toolbar button.compile:disabled { opacity: 0.5; cursor: not-allowed; }
+    .editor-toolbar button.send { background: #6f42c1; color: white; border-color: #6f42c1; }
+    .editor-toolbar button.send:hover { background: #5a32a3; border-color: #5a32a3; }
+    .editor-toolbar button.send:disabled { opacity: 0.5; cursor: not-allowed; }
+    .editor-toolbar .filename-display { font-family: monospace; font-size: 13px; color: #586069; }
+    .editor-main { display: flex; flex: 1; overflow: hidden; }
+    .editor-textarea { flex: 3; padding: 16px; font-family: 'Consolas', 'Monaco', 'Courier New', monospace; font-size: 14px; border: none; outline: none; resize: none; background: #fafbfc; line-height: 1.6; tab-size: 2; overflow: auto; }
+    .editor-textarea:focus { background: white; }
+    .editor-output { flex: 2; padding: 16px; background: #1e1e1e; color: #d4d4d4; font-family: 'Consolas', 'Monaco', 'Courier New', monospace; font-size: 13px; overflow: auto; border-left: 1px solid #ddd; white-space: pre-wrap; word-wrap: break-word; min-height: 300px; }
+    .editor-output .error { color: #f48771; }
+    .editor-output .success { color: #6a9955; }
+    .editor-output .info { color: #569cd6; }
+    .editor-output .warn { color: #d4a72c; }
+    .editor-status { padding: 6px 12px; background: #f6f8fa; border-top: 1px solid #ddd; font-size: 12px; color: #586069; display: flex; justify-content: space-between; }
+    .editor-status .modified { color: #d73a49; font-weight: bold; }
+    .editor-status .saved { color: #28a745; font-weight: bold; }
+    .editor-status .info { color: #0366d6; }
+    pre { background: #f6f8fa; padding: 12px; border-radius: 6px; border: 1px solid #dfe1e4; overflow: auto; margin: 0; }
+    img { max-width: 100%; height: auto; border: 1px solid #ddd; border-radius: 4px; display: block; margin: 10px 0; background: #fff; }
+    .separator { color: #444; } #file-count { color: #8b949e; font-size: 12px; }
+    .markdown-body { flex: 1; min-height: 0; overflow-y: auto; }
+    .markdown-body h1, .markdown-body h2 { border-bottom: 1px solid #eaecef; padding-bottom: 0.3em; margin-top: 0; }
+    .markdown-body p { line-height: 1.5; }
+    #sebWarning { display: none; background: #d73a49; color: white; padding: 8px 15px; font-size: 13px; text-align: center; flex-shrink: 0; }
+    #sebWarning.visible { display: block; }
+    @media (max-width: 768px) {
+      .main-container { flex-direction: column; }
+      #sidebar { width: 100%; height: 150px; border-right: none; border-bottom: 1px solid #e1e4e8; }
+      #topbar #gist-id { display: none; }
+      #content { padding: 15px; }
+      .adaptive-iframe { min-height: 70vh; }
+      .editor-container { min-height: 70vh; }
+      .editor-main { flex-direction: column; }
+      .editor-output { min-height: 200px; border-left: none; border-top: 1px solid #ddd; }
+    }
+
+  </style>
+</head>
+<body>
+  <div id="sebWarning">This page does not appear to be running inside Safe Exam Browser. If this is an exam session, close this window and launch it through Safe Exam Browser instead.</div>
+  <div id="topbar">
+    <div class="logo-container"><span class="logo-gist">Gist</span><span class="logo-viz">Vis</span></div>
+    <span class="separator">|</span>
+    <span id="gist-id" style="font-family:monospace; color: #e1e4e8; font-size: 12px;"></span>
+    <span id="file-count"></span>
+    <span id="compilerStatus" class="compiler-status idle">Compiler: idle (activates when you open a .c/.cpp file)</span>
+    <div style="flex-grow: 1;"></div>
+    <input type="text" id="studentId" placeholder="Name / student ID" title="Included in code submissions">
+    <a href="#" id="github-link" target="_blank">GitHub</a>
+  </div>
+
+  <div class="main-container">
+    <div id="sidebar">
+      <ul id="fileList"></ul>
+      <div id="generatedSection" style="display:none;">
+        <div class="sidebar-heading">Generated (this session)</div>
+        <ul id="generatedFileList"></ul>
+      </div>
+    </div>
+    <div id="content"><div class="content-wrapper">Loading...</div></div>
+  </div>
+
+  <script type="importmap">
+    {
+      "imports": {
+        "browsercc": "https://cdn.jsdelivr.net/npm/browsercc@0.1.1/dist/index.js",
+        "@bjorn3/browser_wasi_shim": "https://cdn.jsdelivr.net/npm/@bjorn3/browser_wasi_shim@0.4.2/dist/index.js"
+      }
+    }
+  </script>
+
+  <script type="module">
+import { compile } from "browsercc";
+
+import { WASI, File, OpenFile, ConsoleStdout, PreopenDirectory } from "@bjorn3/browser_wasi_shim";
+
+let compilerReady = false;
+
+let compilerInitializing = false;
+
+async function ensureCompiler() {
+    if (compilerReady) return true;
+    if (compilerInitializing) {
+        return new Promise((resolve, reject) => {
+            const check = setInterval(() => {
+                if (compilerReady) {
+                    clearInterval(check);
+                    resolve(true);
+                } else if (!compilerInitializing) {
+                    clearInterval(check);
+                    reject(new Error("Compiler initialization failed"));
+                }
+            }, 100);
+        });
+    }
+    compilerInitializing = true;
+    const statusEl = document.getElementById("compilerStatus");
+    try {
+        statusEl.textContent = "Compiler: downloading toolchain (~90MB, may take a while)...";
+        statusEl.className = "compiler-status loading";
+        await compile({
+            source: "int main(){return 0;}",
+            fileName: "warmup.c",
+            flags: [ "-x", "c", "-O2" ]
+        });
+        compilerReady = true;
+        compilerInitializing = false;
+        statusEl.textContent = "Compiler: ready";
+        statusEl.className = "compiler-status ready";
+        return true;
+    } catch (error) {
+        console.error("Compiler initialization error:", error);
+        compilerInitializing = false;
+        statusEl.textContent = "Compiler: error";
+        statusEl.className = "compiler-status error";
+        throw error;
+    }
+}
+
+function explainCompilerError(text) {
+    if (!text) return text;
+    if (text.includes("__cxa_allocate_exception") || text.includes("__cxa_throw") || text.includes("__cxa_begin_catch")) {
+        return text + "\n\nNote: this compiler (browsercc, on WASI-SDK) does not support C++ exceptions " + "(throw/try/catch) because its libc++ was built without that support. " + "Rewrite the code without exceptions (for example, using error codes or std::optional).";
+    }
+    return text;
+}
+
+async function getSiblingState(f) {
+    let state = fileStore.get(f.filename);
+    if (!state) {
+        const original = await getFileContent(f);
+        state = {
+            original: original,
+            current: original
+        };
+        fileStore.set(f.filename, state);
+    }
+    return state;
+}
+
+async function buildInputFiles(currentFilename) {
+    const wasiFiles = new Map;
+    const snapshot = new Map;
+    for (const f of gistFiles) {
+        if (f.filename === currentFilename) continue;
+        const state = await getSiblingState(f);
+        snapshot.set(f.filename, state.current);
+        wasiFiles.set(f.filename, new File((new TextEncoder).encode(state.current)));
+    }
+    return {
+        wasiFiles: wasiFiles,
+        snapshot: snapshot
+    };
+}
+
+async function buildHeaderFiles(currentFilename, headerExt) {
+    const extraFiles = {};
+    for (const f of gistFiles) {
+        if (f.filename === currentFilename) continue;
+        if (getExt(f.filename) !== headerExt) continue;
+        const state = await getSiblingState(f);
+        extraFiles[f.filename] = state.current;
+    }
+    return extraFiles;
+}
+
+async function buildScriptFiles(currentFilename) {
+    const files = {};
+    for (const f of gistFiles) {
+        if (f.filename === currentFilename) continue;
+        const state = await getSiblingState(f);
+        files[f.filename] = state.current;
+    }
+    return files;
+}
+
+async function compileCode(code, filename) {
+    if (!compilerReady) {
+        await ensureCompiler();
+    }
+    const ext = getExt(filename);
+    const isCpp = ext === "cpp" || ext === "cc" || ext === "cxx";
+    try {
+        const flags = [ "-x", isCpp ? "c++" : "c", "-O2" ];
+        if (isCpp) flags.push("-std=c++17", "-fno-exceptions");
+        const headerExt = isCpp ? "hpp" : "h";
+        const extraFiles = await buildHeaderFiles(filename, headerExt);
+        const {compileOutput: compileOutput, module: module} = await compile({
+            source: code,
+            fileName: filename,
+            flags: flags,
+            extraFiles: extraFiles
+        });
+        if (!module) {
+            return {
+                output: "",
+                error: explainCompilerError(compileOutput) || "Compilation failed",
+                success: false,
+                files: []
+            };
+        }
+        let stdout = "";
+        let stderr = "";
+        const {wasiFiles: wasiFiles, snapshot: snapshot} = await buildInputFiles(filename);
+        const workDir = new PreopenDirectory(".", wasiFiles);
+        const fds = [ new OpenFile(new File([])), new ConsoleStdout(data => {
+            stdout += (new TextDecoder).decode(data);
+        }), new ConsoleStdout(data => {
+            stderr += (new TextDecoder).decode(data);
+        }), workDir ];
+        const wasi = new WASI([], [], fds);
+        let exitCode = 0;
+        try {
+            const instance = await WebAssembly.instantiate(module, {
+                wasi_snapshot_preview1: wasi.wasiImport
+            });
+            exitCode = wasi.start(instance);
+        } catch (runErr) {
+            stderr += (stderr ? "\n" : "") + "[runtime error] " + runErr.message;
+            exitCode = 1;
+        }
+        let error = compileOutput && compileOutput.trim() ? compileOutput.trim() : "";
+        if (stderr) error += (error ? "\n" : "") + stderr;
+        const files = [];
+        for (const [name, inode] of workDir.dir.contents) {
+            if (!(inode instanceof File)) continue;
+            const text = (new TextDecoder).decode(inode.data);
+            if (!snapshot.has(name) || snapshot.get(name) !== text) {
+                files.push({
+                    name: name,
+                    content: text
+                });
+            }
+        }
+        return {
+            output: stdout,
+            error: explainCompilerError(error),
+            success: exitCode === 0,
+            files: files
+        };
+    } catch (error) {
+        return {
+            output: "",
+            error: explainCompilerError(error.message) || "Compilation failed",
+            success: false,
+            files: []
+        };
+    }
+}
+
+const EXEC_TIMEOUT_MS = 8e3;
+
+const WASMOON_VERSION = "1.16.0";
+
+const WASMOON_ESM_URL = `https://cdn.jsdelivr.net/npm/wasmoon@${WASMOON_VERSION}/+esm`;
+
+const WASMOON_WASM_URL = `https://cdn.jsdelivr.net/npm/wasmoon@${WASMOON_VERSION}/dist/glue.wasm`;
+
+function buildJsWorkerSource() {
+    return `
+const IMPORT_RE = /(\\bfrom\\s*|\\bimport\\s*\\(\\s*)(['"])([^'"]+)\\2/g;
+function resolveSpecifier(spec, known) {
+    const clean = spec.replace(/^\\.\\//, "");
+    if (known.has(clean)) return clean;
+    if (known.has(clean + ".js")) return clean + ".js";
+    if (known.has(clean + ".mjs")) return clean + ".mjs";
+    return null;
+}
+function rewriteImports(source, urlMap) {
+    return source.replace(IMPORT_RE, (full, kw, quote, spec) => {
+        const target = resolveSpecifier(spec, urlMap);
+        return target ? kw + quote + urlMap.get(target) + quote : full;
+    });
+}
+function resolveModuleGraph(jsFiles) {
+    const resolved = new Map();
+    const pending = new Map(jsFiles);
+    let progress = true;
+    while (progress && pending.size > 0) {
+        progress = false;
+        for (const [name, content] of Array.from(pending.entries())) {
+            const specs = Array.from(content.matchAll(IMPORT_RE)).map((m) => m[3]);
+            const refs = specs.map((s) => resolveSpecifier(s, jsFiles)).filter(Boolean);
+            if (refs.every((r) => resolved.has(r))) {
+                const rewritten = rewriteImports(content, resolved);
+                const url = URL.createObjectURL(new Blob([rewritten], { type: "text/javascript" }));
+                resolved.set(name, url);
+                pending.delete(name);
+                progress = true;
+            }
+        }
+    }
+    for (const [name, content] of pending) {
+        resolved.set(name, URL.createObjectURL(new Blob([content], { type: "text/javascript" })));
+    }
+    return resolved;
+}
+self.onmessage = async (e) => {
+    const { code, files } = e.data;
+    const fileMap = new Map(Object.entries(files));
+    const snapshot = new Map(fileMap);
+    let output = "";
+    const write = (...args) => {
+        output += args.map((a) => {
+            if (typeof a === "string") return a;
+            try { return JSON.stringify(a); } catch (_) { return String(a); }
+        }).join(" ") + "\\n";
+    };
+    self.console = { log: write, info: write, warn: write, error: write };
+    self.readFile = (name) => {
+        if (!fileMap.has(name)) throw new Error("File not found: " + name);
+        return fileMap.get(name);
+    };
+    self.writeFile = (name, content) => { fileMap.set(name, String(content)); };
+    const jsFiles = new Map(Array.from(fileMap.entries()).filter(([name]) => /\\.m?js$/i.test(name)));
+    const moduleUrls = resolveModuleGraph(jsFiles);
+    let error = "";
+    let entryUrl = null;
+    try {
+        const entrySource = rewriteImports(code, moduleUrls);
+        entryUrl = URL.createObjectURL(new Blob([entrySource], { type: "text/javascript" }));
+        await import(entryUrl);
+    } catch (err) {
+        error = (err && err.stack) ? err.stack : String(err);
+    } finally {
+        if (entryUrl) URL.revokeObjectURL(entryUrl);
+        for (const url of moduleUrls.values()) URL.revokeObjectURL(url);
+    }
+    const changedFiles = [];
+    for (const [name, content] of fileMap) {
+        if (!snapshot.has(name) || snapshot.get(name) !== content) {
+            changedFiles.push({ name, content });
+        }
+    }
+    self.postMessage({ output, error, files: changedFiles });
+};
+`;
+}
+
+function buildLuaWorkerSource(esmUrl, wasmUrl) {
+    return `
+import { LuaFactory } from "${esmUrl}";
+self.onmessage = async (e) => {
+    const { code, files } = e.data;
+    const fileMap = new Map(Object.entries(files));
+    const snapshot = new Map(fileMap);
+    let output = "";
+    let error = "";
+    let lua = null;
+    try {
+        const factory = new LuaFactory("${wasmUrl}");
+        lua = await factory.createEngine();
+        lua.global.set("print", (...args) => {
+            output += args.map((a) => String(a)).join("\\t") + "\\n";
+        });
+        lua.global.set("readfile", (name) => {
+            return fileMap.has(name) ? fileMap.get(name) : null;
+        });
+        lua.global.set("writefile", (name, content) => {
+            fileMap.set(name, String(content));
+        });
+        const luaModules = new Map();
+        for (const [name, content] of fileMap) {
+            if (/\\.lua$/i.test(name)) {
+                luaModules.set(name.replace(/\\.lua$/i, ""), content);
+            }
+        }
+        const moduleCache = new Map();
+        const loadingStack = [];
+        lua.global.set("require", (name) => {
+            if (moduleCache.has(name)) return moduleCache.get(name);
+            const source = luaModules.get(name);
+            if (source === undefined) {
+                throw new Error("module '" + name + "' not found (no matching .lua file in the gist)");
+            }
+            if (loadingStack.includes(name)) {
+                throw new Error("circular require detected for module '" + name + "'");
+            }
+            loadingStack.push(name);
+            let result;
+            try {
+                result = lua.doStringSync(source);
+            } finally {
+                loadingStack.pop();
+            }
+            const value = result === undefined ? true : result;
+            moduleCache.set(name, value);
+            return value;
+        });
+        await lua.doString(code);
+    } catch (err) {
+        error = (err && err.message) ? err.message : String(err);
+    } finally {
+        if (lua) {
+            try { lua.global.close(); } catch (_) {}
+        }
+    }
+    const changedFiles = [];
+    for (const [name, content] of fileMap) {
+        if (!snapshot.has(name) || snapshot.get(name) !== content) {
+            changedFiles.push({ name, content });
+        }
+    }
+    self.postMessage({ output, error, files: changedFiles });
+};
+`;
+}
+
+function runInWorker(kind, code, filesObj, timeoutMs) {
+    return new Promise(resolve => {
+        const src = kind === "lua" ? buildLuaWorkerSource(WASMOON_ESM_URL, WASMOON_WASM_URL) : buildJsWorkerSource();
+        const blob = new Blob([ src ], {
+            type: "text/javascript"
+        });
+        const workerUrl = URL.createObjectURL(blob);
+        let worker;
+        try {
+            worker = new Worker(workerUrl, {
+                type: "module"
+            });
+        } catch (err) {
+            URL.revokeObjectURL(workerUrl);
+            resolve({
+                output: "",
+                error: "Could not start the " + kind + " runner: " + err.message,
+                success: false,
+                files: []
+            });
+            return;
+        }
+        let settled = false;
+        const finish = result => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timer);
+            URL.revokeObjectURL(workerUrl);
+            worker.terminate();
+            resolve(result);
+        };
+        const timer = setTimeout(() => {
+            finish({
+                output: "",
+                error: `Execution timed out after ${timeoutMs / 1e3}s (possible infinite loop).`,
+                success: false,
+                files: []
+            });
+        }, timeoutMs);
+        worker.onmessage = e => {
+            const {output: output, error: error, files: files} = e.data || {};
+            finish({
+                output: output || "",
+                error: error || "",
+                success: !error,
+                files: files || []
+            });
+        };
+        worker.onerror = e => {
+            finish({
+                output: "",
+                error: e.message || "Worker error",
+                success: false,
+                files: []
+            });
+        };
+        worker.postMessage({
+            code: code,
+            files: filesObj
+        });
+    });
+}
+
+async function runScript(code, filename) {
+    const ext = getExt(filename);
+    const kind = ext === "lua" ? "lua" : "js";
+    const filesObj = await buildScriptFiles(filename);
+    return runInWorker(kind, code, filesObj, EXEC_TIMEOUT_MS);
+}
+
+const FORMBOLD_FORM_ID = "REPLACE_WITH_YOUR_FORMBOLD_FORM_ID";
+
+function getStudentId() {
+    const el = document.getElementById("studentId");
+    return el ? el.value.trim() : "";
+}
+
+async function sendCodeByEmail(file, code) {
+    const studentId = getStudentId();
+    if (!studentId) {
+        const input = document.getElementById("studentId");
+        input.focus();
+        input.style.borderColor = "#d73a49";
+        setTimeout(() => {
+            input.style.borderColor = "";
+        }, 1500);
+        throw new Error("Enter your name/student ID above before sending.");
+    }
+    const gistId = new URLSearchParams(window.location.search).get("id") || "";
+    const formData = new FormData;
+    formData.append("subject", `GistVis - ${file.filename} - ${studentId}`);
+    formData.append("name", studentId);
+    formData.append("student", studentId);
+    formData.append("filename", file.filename);
+    formData.append("gist_id", gistId);
+    formData.append("message", code);
+    const response = await fetch(`https://formbold.com/s/${FORMBOLD_FORM_ID}`, {
+        method: "POST",
+        headers: {
+            Accept: "application/json"
+        },
+        body: formData
+    });
+    let result = {};
+    try {
+        result = await response.json();
+    } catch (e) {}
+    if (!response.ok) {
+        throw new Error(result.message || result.error || "Could not send the code.");
+    }
+    return result;
+}
+
+let currentObjectUrl = null;
+
+const fileStore = new Map;
+
+let gistFiles = [];
+
+const generatedFiles = new Map;
+
+const CODE_EXTS = [ "cpp", "hpp", "php", "py", "js", "lua", "java", "c", "h", "rb", "go", "rs", "ts", "jsx", "tsx", "vue", "css", "scss", "less", "json", "xml", "yaml", "yml", "sql", "sh", "bash" ];
+
+const COMPILE_EXTS = [ "c", "cpp", "cc", "cxx" ];
+
+const SCRIPT_EXTS = [ "js", "lua" ];
+
+function getExt(filename) {
+    if (!filename) return "";
+    const parts = filename.split(".");
+    return parts.length > 1 ? parts.pop().toLowerCase() : "";
+}
+
+function isCodeFile(ext) {
+    return CODE_EXTS.includes(ext);
+}
+
+function isCompilable(ext) {
+    return COMPILE_EXTS.includes(ext);
+}
+
+function isScript(ext) {
+    return SCRIPT_EXTS.includes(ext);
+}
+
+function getLanguageFromExt(ext) {
+    const map = {
+        cpp: "cpp",
+        hpp: "cpp",
+        c: "c",
+        h: "c",
+        php: "php",
+        py: "python",
+        js: "javascript",
+        jsx: "javascript",
+        ts: "typescript",
+        tsx: "typescript",
+        lua: "lua",
+        java: "java",
+        rb: "ruby",
+        go: "go",
+        rs: "rust",
+        vue: "vue",
+        css: "css",
+        scss: "scss",
+        less: "less",
+        json: "json",
+        xml: "xml",
+        yaml: "yaml",
+        yml: "yaml",
+        sql: "sql",
+        sh: "bash",
+        bash: "bash"
+    };
+    return map[ext] || ext;
+}
+
+async function loadGist() {
+    const params = new URLSearchParams(window.location.search);
+    const gistId = params.get("id");
+    if (!gistId) {
+        document.querySelector(".content-wrapper").innerHTML = "<h2>Welcome</h2><p>Add <code>?id=YOUR_GIST_ID</code> to the URL to view files.</p>";
+        return;
+    }
+    document.getElementById("gist-id").innerText = gistId;
+    document.getElementById("github-link").href = `https://gist.github.com/${gistId}`;
+    try {
+        const response = await fetch(`https://api.github.com/gists/${gistId}`);
+        if (!response.ok) throw new Error("Gist not found.");
+        const gist = await response.json();
+        const fileListContainer = document.getElementById("fileList");
+        const files = Object.values(gist.files || {});
+        files.sort((a, b) => {
+            const aName = (a.filename || "").toLowerCase();
+            const bName = (b.filename || "").toLowerCase();
+            if (aName.startsWith("readme")) return -1;
+            if (bName.startsWith("readme")) return 1;
+            return aName.localeCompare(bName);
+        });
+        gistFiles = files;
+        document.getElementById("file-count").innerText = `${files.length} file(s)`;
+        fileListContainer.innerHTML = "";
+        files.forEach((file, index) => {
+            const li = document.createElement("li");
+            li.textContent = file.filename || "(untitled)";
+            li.onclick = () => {
+                document.querySelectorAll("#sidebar li").forEach(l => l.classList.remove("active"));
+                li.classList.add("active");
+                renderFile(file);
+                if (window.innerWidth <= 768) {
+                    document.getElementById("content").scrollIntoView({
+                        behavior: "smooth"
+                    });
+                }
+            };
+            fileListContainer.appendChild(li);
+            if (index === 0) {
+                li.classList.add("active");
+                renderFile(file);
+            }
+        });
+    } catch (error) {
+        document.querySelector(".content-wrapper").innerText = "Error: " + error.message;
+    }
+}
+
+function renderGeneratedSidebar() {
+    const section = document.getElementById("generatedSection");
+    const list = document.getElementById("generatedFileList");
+    list.innerHTML = "";
+    if (generatedFiles.size === 0) {
+        section.style.display = "none";
+        return;
+    }
+    section.style.display = "";
+    for (const [name, content] of generatedFiles) {
+        const li = document.createElement("li");
+        li.textContent = name;
+        li.onclick = () => {
+            document.querySelectorAll("#sidebar li").forEach(l => l.classList.remove("active"));
+            li.classList.add("active");
+            renderFile({
+                filename: name,
+                content: content,
+                generated: true
+            });
+            if (window.innerWidth <= 768) {
+                document.getElementById("content").scrollIntoView({
+                    behavior: "smooth"
+                });
+            }
+        };
+        list.appendChild(li);
+    }
+}
+
+async function getFileContent(file) {
+    if (file.truncated) {
+        const response = await fetch(file.raw_url);
+        return await response.text();
+    }
+    return file.content || "";
+}
+
+function createEditor(file, state) {
+    const ext = getExt(file.filename);
+    const lang = getLanguageFromExt(ext);
+    const isCompilableFile = isCompilable(ext);
+    const isScriptFile = isScript(ext);
+    const runLabel = isCompilableFile ? "Compile &amp; Run" : "Run";
+    const content = state.current;
+    const container = document.createElement("div");
+    container.className = "editor-container";
+    const toolbar = document.createElement("div");
+    toolbar.className = "editor-toolbar";
+    toolbar.innerHTML = `\n        <span class="filename-display">${file.filename}</span>\n        <span style="flex:1"></span>\n        ${isCompilableFile || isScriptFile ? `<button class="compile" id="compileBtn">${runLabel}</button>` : ""}\n        <button class="send" id="sendBtn">Send</button>\n        <button class="danger" id="resetBtn">Reset</button>\n      `;
+    container.appendChild(toolbar);
+    const mainArea = document.createElement("div");
+    mainArea.className = "editor-main";
+    const textarea = document.createElement("textarea");
+    textarea.className = "editor-textarea";
+    textarea.value = content;
+    textarea.spellcheck = false;
+    textarea.style.tabSize = "2";
+    mainArea.appendChild(textarea);
+    const outputDiv = document.createElement("div");
+    outputDiv.className = "editor-output";
+    outputDiv.id = "outputPanel";
+    outputDiv.textContent = "Output will appear here...";
+    mainArea.appendChild(outputDiv);
+    container.appendChild(mainArea);
+    let hasChanges = content !== state.original;
+    const status = document.createElement("div");
+    status.className = "editor-status";
+    status.innerHTML = `\n        <span>${lang || "text"}</span>\n        <span id="statusText" class="${hasChanges ? "modified" : "saved"}">${hasChanges ? "Modified" : "Saved"}</span>\n        <span id="lineCount">Lines: ${content.split("\n").length}</span>\n      `;
+    container.appendChild(status);
+    const statusText = status.querySelector("#statusText");
+    const resetBtn = toolbar.querySelector("#resetBtn");
+    const compileBtn = toolbar.querySelector("#compileBtn");
+    const sendBtn = toolbar.querySelector("#sendBtn");
+    const outputPanel = outputDiv;
+    textarea.addEventListener("input", () => {
+        state.current = textarea.value;
+        hasChanges = textarea.value !== state.original;
+        statusText.textContent = hasChanges ? "Modified" : "Saved";
+        statusText.className = hasChanges ? "modified" : "saved";
+        updateLineCount();
+    });
+    function updateLineCount() {
+        const lines = textarea.value.split("\n").length;
+        status.querySelector("#lineCount").textContent = `Lines: ${lines}`;
+    }
+    sendBtn.addEventListener("click", async () => {
+        sendBtn.disabled = true;
+        sendBtn.textContent = "Sending...";
+        try {
+            await sendCodeByEmail(file, textarea.value);
+            outputPanel.textContent = "Code sent successfully (" + getStudentId() + ").";
+            outputPanel.className = "editor-output success";
+        } catch (err) {
+            outputPanel.textContent = "Error sending code: " + err.message;
+            outputPanel.className = "editor-output error";
+        } finally {
+            sendBtn.disabled = false;
+            sendBtn.textContent = "Send";
+        }
+    });
+    resetBtn.addEventListener("click", async () => {
+        if (confirm("Reload the original content from GitHub?")) {
+            try {
+                const freshContent = await getFileContent(file);
+                textarea.value = freshContent;
+                state.original = freshContent;
+                state.current = freshContent;
+                hasChanges = false;
+                statusText.textContent = "Saved";
+                statusText.className = "saved";
+                updateLineCount();
+                outputPanel.textContent = "Output will appear here...";
+                outputPanel.className = "editor-output";
+            } catch (err) {
+                alert("Error reloading: " + err.message);
+            }
+        }
+    });
+    if (compileBtn) {
+        compileBtn.addEventListener("click", async () => {
+            const code = textarea.value;
+            const busyLabel = isCompilableFile ? "Compiling..." : "Running...";
+            const errorLabel = isCompilableFile ? "Compilation Error:\n" : "Runtime Error:\n";
+            const noOutputLabel = isCompilableFile ? "Compilation successful. No output." : "Execution finished. No output.";
+            outputPanel.textContent = busyLabel;
+            outputPanel.className = "editor-output info";
+            compileBtn.disabled = true;
+            compileBtn.textContent = busyLabel;
+            try {
+                const result = isCompilableFile ? await (async () => {
+                    await ensureCompiler();
+                    return compileCode(code, file.filename);
+                })() : await runScript(code, file.filename);
+                let output = "";
+                if (result.error) {
+                    output += errorLabel + result.error + "\n";
+                }
+                if (result.output) {
+                    output += "Program Output:\n" + result.output;
+                }
+                if (!result.output && !result.error && result.success) {
+                    output = noOutputLabel;
+                }
+                outputPanel.textContent = output || noOutputLabel;
+                outputPanel.className = "editor-output " + (result.error || !result.success ? "error" : "success");
+                if (result.files && result.files.length) {
+                    result.files.forEach(f => generatedFiles.set(f.name, f.content));
+                    renderGeneratedSidebar();
+                }
+            } catch (error) {
+                outputPanel.textContent = "Error: " + error.message;
+                outputPanel.className = "editor-output error";
+            } finally {
+                compileBtn.disabled = false;
+                compileBtn.textContent = runLabel.replace("&amp;", "&");
+            }
+        });
+    }
+    textarea.addEventListener("keydown", e => {
+        if (e.ctrlKey && e.key === "s") {
+            e.preventDefault();
+        }
+        if (e.ctrlKey && e.key === "Enter" && compileBtn) {
+            e.preventDefault();
+            compileBtn.click();
+        }
+        if (e.key === "Tab") {
+            e.preventDefault();
+            const start = textarea.selectionStart;
+            const end = textarea.selectionEnd;
+            const spaces = "  ";
+            textarea.value = textarea.value.substring(0, start) + spaces + textarea.value.substring(end);
+            textarea.selectionStart = textarea.selectionEnd = start + spaces.length;
+            textarea.dispatchEvent(new Event("input"));
+        }
+    });
+    return container;
+}
+
+async function renderFile(file) {
+    const wrapper = document.querySelector(".content-wrapper");
+    const ext = getExt(file.filename);
+    const imageExts = [ "jpg", "jpeg", "png", "gif", "webp" ];
+    wrapper.innerHTML = "Loading file...";
+    try {
+        if (currentObjectUrl) {
+            URL.revokeObjectURL(currentObjectUrl);
+        }
+        if (file.generated) {
+            const pre = document.createElement("pre");
+            const code = document.createElement("code");
+            code.textContent = file.content;
+            const lang = getLanguageFromExt(ext);
+            if (lang) {
+                code.className = `language-${lang.toLowerCase()}`;
+            }
+            pre.appendChild(code);
+            wrapper.innerHTML = "";
+            wrapper.appendChild(pre);
+            hljs.highlightElement(code);
+            return;
+        }
+        if (isCompilable(ext) || isCodeFile(ext)) {
+            let state = fileStore.get(file.filename);
+            if (!state) {
+                const original = await getFileContent(file);
+                state = {
+                    original: original,
+                    current: original
+                };
+                fileStore.set(file.filename, state);
+            }
+            const editor = createEditor(file, state);
+            wrapper.innerHTML = "";
+            wrapper.appendChild(editor);
+            if (isCompilable(ext) && !compilerReady && !compilerInitializing) {
+                ensureCompiler().catch(console.error);
+            }
+            return;
+        }
+        const content = await getFileContent(file);
+        const trimmedContent = content.trim();
+        if (ext === "html" || ext === "svg") {
+            const mimeType = ext === "svg" ? "image/svg+xml" : "text/html";
+            const blob = new Blob([ content ], {
+                type: mimeType
+            });
+            currentObjectUrl = URL.createObjectURL(blob);
+            wrapper.innerHTML = `<iframe src="${currentObjectUrl}" class="adaptive-iframe" sandbox="allow-scripts allow-same-origin" title="${file.filename}"></iframe>`;
+            return;
+        }
+        const base64Regex = /^data:image\/(png|jpg|jpeg|gif|webp|svg\+xml);base64,/;
+        if (base64Regex.test(trimmedContent)) {
+            wrapper.innerHTML = `<img src="${trimmedContent}" alt="${file.filename}">`;
+            return;
+        }
+        if (imageExts.includes(ext)) {
+            wrapper.innerHTML = `<img src="${file.raw_url}" alt="${file.filename}">`;
+            return;
+        }
+        if (file.language === "Markdown" || ext === "md") {
+            wrapper.innerHTML = `<div class="markdown-body">${marked.parse(content)}</div>`;
+            wrapper.querySelectorAll("pre code").forEach(block => hljs.highlightElement(block));
+            return;
+        }
+        const pre = document.createElement("pre");
+        const code = document.createElement("code");
+        code.textContent = content;
+        if (file.language) {
+            code.className = `language-${file.language.toLowerCase()}`;
+        }
+        pre.appendChild(code);
+        wrapper.innerHTML = "";
+        wrapper.appendChild(pre);
+        hljs.highlightElement(code);
+    } catch (err) {
+        wrapper.innerHTML = `<p style="color:red">Error loading content: ${err.message}</p>`;
+    }
+}
+
+loadGist();
+  </script>
+</body>
+</html>
