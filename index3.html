@@ -835,11 +835,14 @@ function createEditor(file, state) {
     textarea.spellcheck = false;
     textarea.style.tabSize = "2";
     mainArea.appendChild(textarea);
+    const hasRunPanel = isCompilableFile || isScriptFile;
     const outputDiv = document.createElement("div");
     outputDiv.className = "editor-output";
     outputDiv.id = "outputPanel";
     outputDiv.textContent = "Output will appear here...";
-    mainArea.appendChild(outputDiv);
+    if (hasRunPanel) {
+        mainArea.appendChild(outputDiv);
+    }
     container.appendChild(mainArea);
     let hasChanges = content !== state.original;
     const status = document.createElement("div");
@@ -867,11 +870,21 @@ function createEditor(file, state) {
         sendBtn.textContent = "Sending...";
         try {
             await sendCodeByEmail(file, textarea.value);
-            outputPanel.textContent = "Code sent successfully (" + getStudentId() + ").";
-            outputPanel.className = "editor-output success";
+            const msg = "Code sent successfully (" + getStudentId() + ").";
+            if (hasRunPanel) {
+                outputPanel.textContent = msg;
+                outputPanel.className = "editor-output success";
+            } else {
+                alert(msg);
+            }
         } catch (err) {
-            outputPanel.textContent = "Error sending code: " + err.message;
-            outputPanel.className = "editor-output error";
+            const msg = "Error sending code: " + err.message;
+            if (hasRunPanel) {
+                outputPanel.textContent = msg;
+                outputPanel.className = "editor-output error";
+            } else {
+                alert(msg);
+            }
         } finally {
             sendBtn.disabled = false;
             sendBtn.textContent = "Send";
