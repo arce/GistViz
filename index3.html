@@ -966,6 +966,21 @@ async function renderFile(file) {
             URL.revokeObjectURL(currentObjectUrl);
         }
         if (file.generated) {
+            if (ext === "html" || ext === "svg") {
+                const mimeType = ext === "svg" ? "image/svg+xml" : "text/html";
+                const blob = new Blob([ file.content ], {
+                    type: mimeType
+                });
+                currentObjectUrl = URL.createObjectURL(blob);
+                wrapper.innerHTML = `<iframe src="${currentObjectUrl}" class="adaptive-iframe" sandbox="allow-scripts allow-same-origin" title="${file.filename}"></iframe>`;
+                return;
+            }
+            const base64Regex = /^data:image\/(png|jpg|jpeg|gif|webp|svg\+xml);base64,/;
+            const trimmedGenContent = (file.content || "").trim();
+            if (base64Regex.test(trimmedGenContent)) {
+                wrapper.innerHTML = `<img src="${trimmedGenContent}" alt="${file.filename}">`;
+                return;
+            }
             const pre = document.createElement("pre");
             const code = document.createElement("code");
             code.textContent = file.content;
